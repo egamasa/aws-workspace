@@ -2,13 +2,14 @@ require 'base64'
 require 'net/http'
 require 'open-uri'
 require 'rexml/document'
+require 'securerandom'
 require 'uri'
 require_relative 'area'
 require_relative 'key'
 
 module Radiko
   class Client
-    VERSION = '1.4.1'
+    APP_VERSION = '8.2.4'
     FULL_KEY = Radiko::FULL_KEY
     AREA_LIST = Radiko::AREA_LIST
 
@@ -44,7 +45,7 @@ module Radiko
     def get_stream_base_urls(station_id, timefree: false, areafree: false)
       return [] unless is_available_station_id?(station_id)
 
-      uri = URI.parse("https://radiko.jp/v3/station/stream/aSmartPhone7a/#{station_id}.xml")
+      uri = URI.parse("https://radiko.jp/v3/station/stream/aSmartPhone8/#{station_id}.xml")
       response = Net::HTTP.get(uri)
       xml_doc = REXML::Document.new(response)
       timefree_flag = timefree ? '1' : '0'
@@ -76,10 +77,16 @@ module Radiko
       raise 'Invalid ft' unless ft.match?(/\d{14}/)
       raise 'Invalid to' unless to.match?(/\d{14}/)
 
-      auth_token = get_auth_token_by_station_id(station_id)
-      base_urls = get_stream_base_urls(station_id, timefree: true)
+      user_id = SecureRandom.hex(16)
 
-      { auth_token:, url: "#{base_urls[-1]}?station_id=#{station_id}&l=15&ft=#{ft}&to=#{to}" }
+      auth_token = get_auth_token_by_station_id(station_id, user_id)
+      base_url = 'https://radiko.jp/v2/api/ts/playlist.m3u8'
+
+      {
+        auth_token:,
+        url:
+          "#{base_url}?station_id=#{station_id}&start_at=#{ft}&ft=#{ft}&end_at=#{to}&to=#{to}&preroll=0&l=15&lsid=#{user_id}&type=b"
+      }
     end
 
     def get_area_id_by_station_id(station_id)
@@ -87,24 +94,24 @@ module Radiko
       station['area_id'] || ''
     end
 
-    def get_auth_token_by_station_id(station_id)
+    def get_auth_token_by_station_id(station_id, user_id)
       return '' unless is_available_station_id?(station_id)
 
       area_id = get_area_id_by_station_id(station_id)
-      get_auth_token(area_id)
+      get_auth_token(area_id, user_id)
     end
 
     private
 
-    def get_auth_token(area_id)
+    def get_auth_token(area_id, user_id = SecureRandom.hex(16))
       raise 'Invalid area_id' unless area_id.match?(/\AJP([1-9]|[1-3][0-9]|4[0-7])\z/)
 
       uri = URI.parse('https://radiko.jp/v2/api/auth1')
       auth1_headers = {
-        'X-Radiko-App' => 'aSmartPhone7a',
-        'X-Radiko-App-Version' => VERSION,
+        'X-Radiko-App' => 'aSmartPhone8',
+        'X-Radiko-App-Version' => APP_VERSION,
         'X-Radiko-Device' => 'Ruby.radiko',
-        'X-Radiko-User' => 'dummy_user'
+        'X-Radiko-User' => user_id
       }
       response1 = Net::HTTP.get_response(uri, auth1_headers)
       raise 'Auth1 failed' unless response1.is_a?(Net::HTTPSuccess)
@@ -117,14 +124,14 @@ module Radiko
       coordinate = "#{AREA_LIST[area_id][0]},#{AREA_LIST[area_id][1]},gps"
       uri2 = URI.parse('https://radiko.jp/v2/api/auth2')
       auth2_headers = {
-        'X-Radiko-App' => 'aSmartPhone7a',
-        'X-Radiko-App-Version' => VERSION,
+        'X-Radiko-App' => 'aSmartPhone8',
+        'X-Radiko-App-Version' => APP_VERSION,
         'X-Radiko-AuthToken' => auth_token,
         'X-Radiko-Connection' => 'wifi',
         'X-Radiko-Device' => 'Ruby.radiko',
         'X-Radiko-Location' => coordinate,
         'X-Radiko-PartialKey' => partial_key,
-        'X-Radiko-User' => 'dummy_user'
+        'X-Radiko-User' => user_id
       }
       response2 = Net::HTTP.get_response(uri2, auth2_headers)
       raise 'Auth2 failed' unless response2.is_a?(Net::HTTPSuccess)

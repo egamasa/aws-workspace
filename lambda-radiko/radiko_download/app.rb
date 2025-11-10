@@ -121,14 +121,10 @@ def main(event, context)
     end
 
   client = Radiko::Client.new
-
+  area_id = client.get_area_id_by_station_id(event['station_id'])
   stream_info = client.get_timefree_stream_info(event['station_id'], event['ft'], event['to'])
 
-  headers = {
-    'X-Radiko-AuthToken' => stream_info[:auth_token],
-    'X-Radiko-Device' => 'Ruby.radiko',
-    'X-Radiko-User' => 'dummy_user'
-  }
+  headers = { 'X-Radiko-AreaId' => area_id, 'X-Radiko-AuthToken' => stream_info[:auth_token] }
   pre_playlist = HTTP.headers(headers).get(stream_info[:url])
   playlist_urls = parse_playlist(pre_playlist)
 
