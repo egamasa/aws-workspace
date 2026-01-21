@@ -30,7 +30,12 @@ def extract_notifications(event)
 
   if event['Records']
     event['Records'].each do |record|
-      notification = { subject: nil, message: nil, timestamp: record['Sns']['Timestamp'], data: nil }
+      notification = {
+        subject: nil,
+        message: nil,
+        timestamp: record['Sns']['Timestamp'],
+        data: nil
+      }
 
       begin
         notification[:data] = JSON.parse(record['Sns']['Message'])
