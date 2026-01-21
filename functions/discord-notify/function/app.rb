@@ -54,15 +54,15 @@ end
 def get_embed_color(status)
   case status
   when 'OK'
-    0x57f287 # Discord Green
+    0x00ff41
   when 'INFO'
-    0x5865f2 # Discord Blurple
+    0x00d9ff
   when 'WARN'
-    0xfee75c # Discord Yellow
+    0xfee75c
   when 'ERROR'
-    0xed4245 # Discord Red
+    0xff006e
   else
-    0x99aab5 # Discord Gray
+    0x99aab5
   end
 end
 
