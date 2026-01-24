@@ -21,15 +21,18 @@ def get_webhook_url
     raise "[#{res.code}] #{res.body}" unless res.code == '200'
     return JSON.parse(res.body, symbolize_names: true).dig(:Parameter, :Value)
   rescue StandardError => e
-    raise "Failed to get webhook URL: #{e.message}"
+    raise "Failed to get Webhook URL: #{e.message}"
   end
 end
 
-def extract_notifications(event)
+def parse_event(event)
   notifications = []
 
   if event['Records']
     event['Records'].each do |record|
+      message = record['Sns']['Message']
+      LOGGER.info("Received Message: #{message}")
+
       notification = {
         subject: nil,
         message: nil,
@@ -38,10 +41,10 @@ def extract_notifications(event)
       }
 
       begin
-        notification[:data] = JSON.parse(record['Sns']['Message'])
+        notification[:data] = JSON.parse(message)
       rescue JSON::ParserError
         notification[:subject] = record['Sns']['Subject']
-        notification[:message] = record['Sns']['Message']
+        notification[:message] = message
       end
 
       notifications << notification
@@ -119,7 +122,7 @@ def send_notifications(notifications)
 end
 
 def main(event)
-  notifications = extract_notifications(event)
+  notifications = parse_event(event)
 
   send_notifications(notifications) if notifications.any?
 end
