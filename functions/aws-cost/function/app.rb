@@ -10,22 +10,26 @@ LOGGER = Logger.new($stdout)
 # 料金取得期間
 def get_billing_term
   today = Date.today
-  # 開始日: 当月1日
-  start_date = today.yesterday.beginning_of_month.iso8601
-  # 終了日: スクリプト実行日の前日
-  end_date = today.yesterday.iso8601
 
-  # スクリプト実行日が月初の場合、前月1日～末日を取得期間とする
-  if start_date == end_date
+  if today.day == 1
+    # スクリプト実行日が月初の場合、前月1日～末日を取得期間とする
+    # 開始日: 前月1日
     start_date = today.prev_month.beginning_of_month.iso8601
-    end_date = today.prev_month.end_of_month.iso8601
+  else
+    # 開始日: 当月1日
+    start_date = today.beginning_of_month.iso8601
   end
+  # 終了日: 当日（実際には前日までのデータが取得される）
+  end_date = today.iso8601
 
-  return start_date, end_date
+  # データ上の実際の終了日（表示用）
+  actual_end_date = today.yesterday.iso8601
+
+  return start_date, end_date, actual_end_date
 end
 
 # 料金取得
-def get_costs(start_date, end_date, metric = 'AmortizedCost')
+def get_costs(start_date, end_date, metric = 'UnblendedCost')
   response =
     @ce.get_cost_and_usage(
       time_period: {
@@ -34,7 +38,7 @@ def get_costs(start_date, end_date, metric = 'AmortizedCost')
       },
       granularity: 'MONTHLY',
       metrics: [metric],
-      group_by: [{ type: 'DIMENSION', key: 'SERVICE' }],
+      group_by: [{ key: 'SERVICE', type: 'DIMENSION' }],
       filter: {
         not: {
           # クレジット充当額を除外（クレジット充当前の金額を表示する）
@@ -142,10 +146,10 @@ def send_notify(start_date, end_date, cost_total, cost_per_service)
 end
 
 def lambda_handler(event:, context:)
-  start_date, end_date = get_billing_term()
+  start_date, end_date, actual_end_date = get_billing_term()
 
   @ce = Aws::CostExplorer::Client.new(region: 'us-east-1')
   cost_total, cost_per_service = get_costs(start_date, end_date)
 
-  send_notify(start_date, end_date, cost_total, cost_per_service)
+  send_notify(start_date, actual_end_date, cost_total, cost_per_service)
 end
