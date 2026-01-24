@@ -10,7 +10,7 @@ Globals:
     MemorySize: 128
 
 Parameters:
-  DiscordWebhookUrl:
+  NotifySnsTopicArn:
     Type: String
 
 Resources:
@@ -25,7 +25,7 @@ Resources:
         - arm64
       Environment:
         Variables:
-          DISCORD_WEBHOOK_URL: !Ref DiscordWebhookUrl
+          SNS_TOPIC_ARN: !Ref NotifySnsTopicArn
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -33,6 +33,10 @@ Resources:
               Action:
                 - 'ce:GetCostAndUsage'
               Resource: '*'
+            - Effect: Allow
+              Action:
+                - 'sns:Publish'
+              Resource: !Ref NotifySnsTopicArn
 
 Outputs:
   AwsCostFunction:

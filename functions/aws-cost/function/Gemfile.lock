@@ -1,0 +1,63 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    activesupport (8.1.2)
+      base64
+      bigdecimal
+      concurrent-ruby (~> 1.0, >= 1.3.1)
+      connection_pool (>= 2.2.5)
+      drb
+      i18n (>= 1.6, < 2)
+      json
+      logger (>= 1.4.2)
+      minitest (>= 5.1)
+      securerandom (>= 0.3)
+      tzinfo (~> 2.0, >= 2.0.5)
+      uri (>= 0.13.1)
+    aws-eventstream (1.4.0)
+    aws-partitions (1.1209.0)
+    aws-sdk-core (3.241.4)
+      aws-eventstream (~> 1, >= 1.3.0)
+      aws-partitions (~> 1, >= 1.992.0)
+      aws-sigv4 (~> 1.9)
+      base64
+      bigdecimal
+      jmespath (~> 1, >= 1.6.1)
+      logger
+    aws-sdk-costexplorer (1.147.0)
+      aws-sdk-core (~> 3, >= 3.241.4)
+      aws-sigv4 (~> 1.5)
+    aws-sdk-sns (1.112.0)
+      aws-sdk-core (~> 3, >= 3.241.4)
+      aws-sigv4 (~> 1.5)
+    aws-sigv4 (1.12.1)
+      aws-eventstream (~> 1, >= 1.0.2)
+    base64 (0.3.0)
+    bigdecimal (4.0.1)
+    concurrent-ruby (1.3.6)
+    connection_pool (3.0.2)
+    drb (2.2.3)
+    i18n (1.14.8)
+      concurrent-ruby (~> 1.0)
+    jmespath (1.6.2)
+    json (2.18.0)
+    logger (1.7.0)
+    minitest (6.0.1)
+      prism (~> 1.5)
+    prism (1.8.0)
+    securerandom (0.4.1)
+    tzinfo (2.0.6)
+      concurrent-ruby (~> 1.0)
+    uri (1.1.1)
+
+PLATFORMS
+  aarch64-linux
+  ruby
+
+DEPENDENCIES
+  activesupport
+  aws-sdk-costexplorer
+  aws-sdk-sns
+
+BUNDLED WITH
+   2.7.2
