@@ -2,7 +2,10 @@ require 'active_support/all'
 require 'aws-sdk-costexplorer'
 require 'aws-sdk-sns'
 require 'json'
+require 'logger'
 require 'net/http'
+
+LOGGER = Logger.new($stdout)
 
 # 料金取得期間
 def get_billing_term
@@ -70,12 +73,16 @@ end
 # 為替レート取得
 def get_exchange_rate(unit = 'JPY')
   uri = URI('https://www.gaitameonline.com/rateaj/getrate')
-  response = Net::HTTP.get(uri)
-  rate_data = JSON.parse(response)
+  res = Net::HTTP.get(uri)
+  rate_data = JSON.parse(res)
 
   rate_info = rate_data['quotes'].find { |rate| rate['currencyPairCode'] == "USD#{unit}" }
 
   rate_info ? rate_info['open'] : nil
+rescue StandardError => e
+  LOGGER.error("為替レート取得エラー: #{e.message}")
+
+  return nil
 end
 
 # 為替レート計算
