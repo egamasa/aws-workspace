@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Notify AWS cost to Discord channel
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 128
+
+Parameters:
+  NotifySnsTopicArn:
+    Type: String
+
+Resources:
+  AwsCostFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: aws-cost
+      CodeUri: function/
+      Handler: app.lambda_handler
+      Runtime: ruby3.4
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref NotifySnsTopicArn
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'ce:GetCostAndUsage'
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - 'sns:Publish'
+              Resource: !Ref NotifySnsTopicArn
+
+Outputs:
+  AwsCostFunction:
+    Description: AwsCost Function ARN
+    Value: !GetAtt AwsCostFunction.Arn

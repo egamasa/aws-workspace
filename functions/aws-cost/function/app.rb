@@ -1,8 +1,11 @@
 require 'active_support/all'
 require 'aws-sdk-costexplorer'
-require 'discordrb/webhooks'
+require 'aws-sdk-sns'
 require 'json'
+require 'logger'
 require 'net/http'
+
+LOGGER = Logger.new($stdout)
 
 # 料金取得期間
 def get_billing_term
@@ -34,7 +37,7 @@ def get_costs(start_date, end_date, metric = 'AmortizedCost')
       group_by: [{ type: 'DIMENSION', key: 'SERVICE' }],
       filter: {
         not: {
-          # クレジット充当額を除外
+          # クレジット充当額を除外（クレジット充当前の金額を表示する）
           dimensions: {
             key: 'RECORD_TYPE',
             values: ['Credit']
@@ -70,12 +73,16 @@ end
 # 為替レート取得
 def get_exchange_rate(unit = 'JPY')
   uri = URI('https://www.gaitameonline.com/rateaj/getrate')
-  response = Net::HTTP.get(uri)
-  rate_data = JSON.parse(response)
+  res = Net::HTTP.get(uri)
+  rate_data = JSON.parse(res)
 
   rate_info = rate_data['quotes'].find { |rate| rate['currencyPairCode'] == "USD#{unit}" }
 
   rate_info ? rate_info['open'] : nil
+rescue StandardError => e
+  LOGGER.error("為替レート取得エラー: #{e.message}")
+
+  return nil
 end
 
 # 為替レート計算
@@ -96,42 +103,42 @@ def format_amount(cost_group, exchange_rate)
   end
 end
 
-# Discord 送信
-def send_message(start_date, end_date, cost_total, cost_per_service)
+def sns_publish(message)
+  return unless ENV['SNS_TOPIC_ARN']
+
+  sns = Aws::SNS::Client.new
+  sns.publish(topic_arn: ENV['SNS_TOPIC_ARN'], message: message.to_json)
+end
+
+def send_notify(start_date, end_date, cost_total, cost_per_service)
+  title = 'AWS 利用料金'
+  status = 'INFO'
+  message = "#{start_date} ～ #{end_date}"
+
   unit = 'JPY'
   exchange_rate = get_exchange_rate()
 
-  webhook_url = ENV['DISCORD_WEBHOOK_URL']
-  discord_client = Discordrb::Webhooks::Client.new(url: webhook_url)
+  fields = [{ name: '合計', value: format_amount(cost_total, exchange_rate), inline: false }]
 
-  discord_client.execute do |builder|
-    builder.add_embed do |embed|
-      embed.title = 'AWS 利用料金'
-      embed.description = "#{start_date} ～ #{end_date}"
+  cost_per_service.each do |service_cost|
+    next if service_cost[:amount].to_f.round(2) == 0.0
 
-      embed.add_field(name: '合計', value: format_amount(cost_total, exchange_rate), inline: false)
-
-      cost_per_service.each do |service_cost|
-        next if service_cost[:amount].to_f.round(2) == 0.0
-
-        embed.add_field(
-          name: service_cost[:service],
-          value: format_amount(service_cost, exchange_rate),
-          inline: true
-        )
-      end
-
-      if exchange_rate
-        embed.footer =
-          Discordrb::Webhooks::EmbedFooter.new(text: "$1 USD = #{exchange_rate} #{unit}")
-      else
-        embed.footer = Discordrb::Webhooks::EmbedFooter.new(text: '為替レートの取得に失敗しました')
-      end
-
-      embed.color = 0x7aa116
-      embed.timestamp = Time.now
-    end
+    fields << {
+      name: service_cost[:service],
+      value: format_amount(service_cost, exchange_rate),
+      inline: true
+    }
   end
+
+  if exchange_rate
+    footer = "$1 USD = #{exchange_rate} #{unit}"
+  else
+    footer = '為替レート取得エラー'
+  end
+
+  message = { title:, status:, message:, fields:, footer:, timestamp: Time.now }
+
+  sns_publish(message)
 end
 
 def lambda_handler(event:, context:)
@@ -140,5 +147,5 @@ def lambda_handler(event:, context:)
   @ce = Aws::CostExplorer::Client.new(region: 'us-east-1')
   cost_total, cost_per_service = get_costs(start_date, end_date)
 
-  send_message(start_date, end_date, cost_total, cost_per_service)
+  send_notify(start_date, end_date, cost_total, cost_per_service)
 end
