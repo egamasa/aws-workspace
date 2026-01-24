@@ -78,7 +78,7 @@ def build_embed(notification)
 
   if notification[:data]
     title = [notification[:data]['service'], notification[:data]['title']].compact.join(' / ')
-    description = notification[:data]['message']
+    description = notification[:data]['description']
     timestamp = notification[:data]['timestamp'] if notification[:data]['timestamp']
     embed.color = get_embed_color(notification[:data]['status'])
 
