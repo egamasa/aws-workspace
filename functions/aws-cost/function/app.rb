@@ -113,7 +113,7 @@ end
 def send_notify(start_date, end_date, cost_total, cost_per_service)
   title = 'AWS 利用料金'
   status = 'INFO'
-  message = "#{start_date} ～ #{end_date}"
+  description = "#{start_date} ～ #{end_date}"
 
   unit = 'JPY'
   exchange_rate = get_exchange_rate()
@@ -136,7 +136,7 @@ def send_notify(start_date, end_date, cost_total, cost_per_service)
     footer = '為替レート取得エラー'
   end
 
-  message = { title:, status:, message:, fields:, footer:, timestamp: Time.now }
+  message = { title:, status:, description:, fields:, footer:, timestamp: Time.now }
 
   sns_publish(message)
 end
