@@ -91,9 +91,10 @@ end
 def upload_to_s3(file_path, file_name)
   s3_client = Aws::S3::Client.new
   s3_bucket = ENV['BUCKET_NAME']
-  file_content = File.open(file_path, 'rb')
 
-  s3_client.put_object(bucket: s3_bucket, key: file_name, body: file_content)
+  File.open(file_path, 'rb') do |file|
+    s3_client.put_object(bucket: s3_bucket, key: file_name, body: file)
+  end
 end
 
 def sns_publish(message)
