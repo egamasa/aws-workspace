@@ -101,23 +101,21 @@ def sns_publish(message)
   sns.publish(topic_arn: ENV['SNS_TOPIC_ARN'], message: message.to_json)
 end
 
-def send_notify(status:, audio_url: nil, file_name: nil, item_title: nil, error_msg: nil)
+def send_notify(status:, url: nil, file_name: nil, item_title: nil, error_msg: nil)
   title = 'Podcast Download'
   description =
     if status == :ok
       'ダウンロード完了'
-    elsif audio_url
-      'ダウンロードエラー'
     else
-      '保存エラー'
+      'ダウンロードエラー'
     end
 
   fields = []
   if status == :ok
     fields << { name: 'File', value: file_name, inline: false }
     fields << { name: 'Episode', value: item_title, inline: false }
-  elsif audio_url
-    fields << { name: 'URL', value: audio_url, inline: false }
+  elsif url
+    fields << { name: 'URL', value: url, inline: false }
     fields << { name: 'Error', value: error_msg, inline: false }
   else
     fields << { name: 'File', value: file_name, inline: false }
@@ -131,8 +129,15 @@ end
 
 def main(event, context)
   rss_url = event['rss_url']
-  rss_xml = URI.open(rss_url).read
-  rss = RSS::Parser.parse(rss_xml, false)
+
+  begin
+    rss_xml = URI.open(rss_url).read
+    rss = RSS::Parser.parse(rss_xml, false)
+  rescue => e
+    LOGGER.error("Failed to fetch or parse RSS: #{e.message}")
+    send_notify(status: :error, url: rss_url, error_msg: e.message) if ENV['SNS_TOPIC_ARN']
+    return
+  end
 
   channel = rss.channel
 
@@ -166,7 +171,7 @@ def main(event, context)
       download_file(audio_url, file_path)
     rescue => e
       LOGGER.error("Failed to download: #{e.message}")
-      send_notify(status: :error, audio_url:, error_msg: e.message) if ENV['SNS_TOPIC_ARN']
+      send_notify(status: :error, url: audio_url, error_msg: e.message) if ENV['SNS_TOPIC_ARN']
       next
     end
 
