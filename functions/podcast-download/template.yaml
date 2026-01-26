@@ -1,12 +1,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  Lambda: Download podcast episodes and save to S3
+  Lambda: Download podcast episodes and upload to S3
 
 Parameters:
   BucketName:
     Type: String
     Default: podcast-download
+  NotifySnsTopicArn:
+    Type: String
 
 Resources:
   PodcastDownloadFunction:
@@ -22,6 +24,12 @@ Resources:
       Environment:
         Variables:
           BUCKET_NAME: !Ref BucketName
+          SNS_TOPIC_ARN: !Ref NotifySnsTopicArn
       Policies:
         - S3WritePolicy:
             BucketName: !Ref BucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref NotifySnsTopicArn

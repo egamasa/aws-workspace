@@ -1,4 +1,5 @@
 require 'aws-sdk-s3'
+require 'aws-sdk-sns'
 require 'logger'
 require 'mp3info'
 require 'open-uri'
@@ -90,6 +91,21 @@ def upload_to_s3(file_path, file_name)
   s3_client.put_object(bucket: s3_bucket, key: file_name, body: file_content)
 end
 
+def sns_publish(message)
+  sns = Aws::SNS::Client.new
+  sns.publish(topic_arn: ENV['SNS_TOPIC_ARN'], message: message.to_json)
+end
+
+def send_notify(status, file_name)
+  title = 'Podcast Download'
+  description = 'ダウンロード完了'
+  fields = [{ name: 'File', value: file_name, inline: false }]
+
+  message = { title:, status:, description:, fields:, timestamp: Time.now }
+
+  sns_publish(message)
+end
+
 def main(event, context)
   logger = Logger.new($stdout, progname: 'podcastDownload')
   logger.formatter =
@@ -159,6 +175,8 @@ def main(event, context)
       res = upload_to_s3(file_path, file_name)
       if res.etag
         logger.info({ text: "Download completed: #{file_name}", event: })
+
+        send_notify('OK', file_name) if ENV['SNS_TOPIC_ARN']
 
         File.delete(file_path) if File.exist?(file_path)
       end
