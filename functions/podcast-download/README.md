@@ -1,4 +1,4 @@
-# lambda-podcast-download
+# podcast-download
 
 ポッドキャストの最新回をダウンロードしS3バケットへ保存
 
