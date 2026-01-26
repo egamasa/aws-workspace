@@ -38,6 +38,10 @@ def get_file_ext(url)
   File.extname(URI.parse(url).path)
 end
 
+def sanitize_filename(filename)
+  filename.gsub(%r{[/\:*?"<>|]}, '_')
+end
+
 def utc_to_jst(time)
   time.getlocal('+09:00')
 end
@@ -154,7 +158,7 @@ def main(event, context)
     file_dir = "/tmp/#{SecureRandom.uuid}"
     Dir.mkdir(file_dir)
 
-    file_name = "#{title}_#{item_date.strftime('%Y%m%d%H%M')}#{audio_ext}"
+    file_name = sanitize_filename("#{title}_#{item_date.strftime('%Y%m%d%H%M')}#{audio_ext}")
     file_path = "#{file_dir}/#{file_name}"
 
     begin
