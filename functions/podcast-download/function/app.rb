@@ -9,6 +9,7 @@ require 'time'
 require 'uri'
 
 RETRY_LIMIT = 3
+LOGGER = Logger.new($stdout)
 
 def download_file(url, file_path)
   retry_count = 0
@@ -111,26 +112,6 @@ def send_notify(status, file_name)
 end
 
 def main(event, context)
-  logger = Logger.new($stdout, progname: 'podcastDownload')
-  logger.formatter =
-    proc do |severity, datetime, progname, msg|
-      log = {
-        timestamp: datetime.iso8601,
-        level: severity,
-        progname: progname,
-        message: msg[:text],
-        event: msg[:event]
-      }
-      if msg[:error]
-        log[:error] = {
-          type: msg[:error].class.name,
-          backtrace: msg[:error].is_a?(Exception) ? msg[:error].backtrace : nil,
-          message: msg[:error].to_s
-        }
-      end
-      log.to_json + "\n"
-    end
-
   rss_url = event['rss_url']
   rss_xml = URI.open(rss_url).read
   rss = RSS::Parser.parse(rss_xml, false)
@@ -164,28 +145,28 @@ def main(event, context)
     begin
       download_file(audio_url, file_path)
     rescue => e
-      logger.error({ text: 'Download failed', error: e.message, event: event })
+      LOGGER.error("Failed to download: #{e.message}")
+      next
     end
 
     if audio_ext.downcase == '.mp3'
       begin
         update_mp3tags(file_path, channel, item, event)
       rescue => e
-        logger.error({ text: 'Failed to update mp3 tags', error: e.message, event: event })
+        LOGGER.error("Failed to update MP3 tags: #{e.message}")
       end
     end
 
     begin
       res = upload_to_s3(file_path, file_name)
       if res.etag
-        logger.info({ text: "Download completed: #{file_name}", event: })
-
+        LOGGER.info("Download completed: #{file_name}")
         send_notify('OK', file_name) if ENV['SNS_TOPIC_ARN']
-
-        File.delete(file_path) if File.exist?(file_path)
       end
     rescue => e
-      logger.error({ text: 'Failed to upload to S3', error: e.message, event: event })
+      LOGGER.error("Failed to upload to S3: #{e.message}")
+    ensure
+      File.delete(file_path) if File.exist?(file_path)
     end
   end
 end
