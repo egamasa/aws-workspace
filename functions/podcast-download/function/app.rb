@@ -49,42 +49,13 @@ end
 
 def update_mp3tags(file_path, channel, item, event)
   Mp3Info.open(file_path) do |mp3|
-    # タイトル
     mp3.tag2.TIT2 = zenkaku_to_hankaku(item.title)
-
-    # アーティスト
     mp3.tag2.TPE1 = event['artist'] if event['artist']
-
-    # アルバム
     mp3.tag2.TALB = event['album'] if event['album']
-
-    # アルバムアーティスト
-    if event['album_artist']
-      mp3.tag2.TPE2 = event['album_artist']
-    else
-      mp3.tag2.TPE2 = item.itunes_author
-    end
-
-    # ジャンル
-    if event['genre']
-      mp3.tag2.TCON = event['genre']
-    else
-      mp3.tag2.TCON = channel.itunes_category&.text || 'Podcast'
-    end
-
-    # 年
-    if event['year']
-      mp3.tag2.TDRC = event['year']
-    else
-      mp3.tag2.TDRC = utc_to_jst(item.pubDate).strftime('%Y')
-    end
-
-    # コメント
-    if event['comment']
-      mp3.tag2.COMM = event['comment']
-    else
-      mp3.tag2.COMM = remove_html_tags(item.description)
-    end
+    mp3.tag2.TPE2 = event['album_artist'] || item.itunes_author
+    mp3.tag2.TCON = event['genre'] || channel.itunes_category&.text || 'Podcast'
+    mp3.tag2.TDRC = event['year'] || utc_to_jst(item.pubDate).strftime('%Y')
+    mp3.tag2.COMM = event['comment'] || remove_html_tags(item.description)
   end
 end
 
@@ -103,28 +74,33 @@ def sns_publish(message)
 end
 
 def send_notify(status:, url: nil, file_name: nil, item_title: nil, error_msg: nil)
-  title = 'Podcast Download'
-  description =
+  description = status == :ok ? 'ダウンロード完了' : 'ダウンロードエラー'
+
+  fields =
     if status == :ok
-      'ダウンロード完了'
+      [
+        { name: 'File', value: file_name, inline: false },
+        { name: 'Episode', value: item_title, inline: false }
+      ]
+    elsif url
+      [
+        { name: 'URL', value: url, inline: false },
+        { name: 'Error', value: error_msg, inline: false }
+      ]
     else
-      'ダウンロードエラー'
+      [
+        { name: 'File', value: file_name, inline: false },
+        { name: 'Error', value: error_msg, inline: false }
+      ]
     end
 
-  fields = []
-  if status == :ok
-    fields << { name: 'File', value: file_name, inline: false }
-    fields << { name: 'Episode', value: item_title, inline: false }
-  elsif url
-    fields << { name: 'URL', value: url, inline: false }
-    fields << { name: 'Error', value: error_msg, inline: false }
-  else
-    fields << { name: 'File', value: file_name, inline: false }
-    fields << { name: 'Error', value: error_msg, inline: false }
-  end
-
-  message = { title:, status: status.to_s.upcase, description:, fields:, timestamp: Time.now }
-
+  message = {
+    title: 'Podcast Download',
+    status: status.to_s.upcase,
+    description:,
+    fields:,
+    timestamp: Time.now
+  }
   sns_publish(message)
 end
 
@@ -141,18 +117,8 @@ def main(event, context)
   end
 
   channel = rss.channel
-
-  if event['title']
-    title = event['title']
-  else
-    title = zenkaku_to_hankaku(channel.title)
-  end
-
-  if event['mode'] == 'all'
-    items = rss.items
-  else
-    items = [rss.items.first]
-  end
+  title = event['title'] || zenkaku_to_hankaku(channel.title)
+  items = event['mode'] == 'all' ? rss.items : [rss.items.first]
 
   items.each do |item|
     next unless item.enclosure
@@ -185,12 +151,11 @@ def main(event, context)
     end
 
     begin
-      res = upload_to_s3(file_path, file_name)
-      if res.etag
-        LOGGER.info("Download completed: #{file_name}")
-        if ENV['SNS_TOPIC_ARN']
-          send_notify(status: :ok, file_name:, item_title: zenkaku_to_hankaku(item.title))
-        end
+      upload_to_s3(file_path, file_name)
+
+      LOGGER.info("Download completed: #{file_name}")
+      if ENV['SNS_TOPIC_ARN']
+        send_notify(status: :ok, file_name:, item_title: zenkaku_to_hankaku(item.title))
       end
     rescue => e
       LOGGER.error("Failed to upload to S3: #{e.message}")
