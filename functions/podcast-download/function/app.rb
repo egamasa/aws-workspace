@@ -149,6 +149,8 @@ def main(event, context)
   end
 
   items.each do |item|
+    next unless item.enclosure
+
     audio_url = item.enclosure.url
     audio_ext = get_file_ext(audio_url)
 
