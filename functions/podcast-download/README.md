@@ -12,11 +12,14 @@ sam deploy --guided
 ### パラメータ
 
 - BucketName
-  - 保存先S3バケット名を指定
+  - ［必須］保存先S3バケット名を指定
+- NotifySnsTopicArn
+  - ダウンロード完了通知 送信先SNSトピックARN
+    - [discord-notify](../discord-notify/) をデプロイし、出力される `DiscordNotifyFunctionArn` を指定する想定
 
 ## Lambda ペイロード
 
-リクエスト例
+### リクエスト例
 
 ```
 {
@@ -29,6 +32,8 @@ sam deploy --guided
 }
 ```
 
+### パラメータ
+
 - rss_url
   - ［必須］RSSフィードのURL
 - mode
@@ -38,14 +43,14 @@ sam deploy --guided
 - title
   - 番組タイトル（保存ファイル名に反映）
 
-以下の項目を設定すると、保存ファイルのID3v2タグを上書き（mp3ファイルでのみ有効）
+#### 以下のパラメータを設定すると、保存ファイルのID3v2タグを上書き（mp3ファイルでのみ有効）
 
 - artist
   - アーティスト
-- album
-  - アルバム
 - album_artist
   - アルバムアーティスト
+- album
+  - アルバム
 - genre
   - ジャンル
 - year
