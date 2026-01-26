@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Lambda: Download podcast episodes and upload to S3
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: podcast-download
+  NotifySnsTopicArn:
+    Type: String
+
+Resources:
+  PodcastDownloadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: podcast-download
+      CodeUri: function/
+      Handler: app.lambda_handler
+      Runtime: ruby3.3
+      Architectures: [arm64]
+      Timeout: 600
+      MemorySize: 512
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+          SNS_TOPIC_ARN: !Ref NotifySnsTopicArn
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref BucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref NotifySnsTopicArn
