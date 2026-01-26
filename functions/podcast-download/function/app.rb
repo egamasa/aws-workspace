@@ -69,7 +69,7 @@ def update_mp3tags(file_path, channel, item, event)
     if event['genre']
       mp3.tag2.TCON = event['genre']
     else
-      mp3.tag2.TCON = channel.itunes_category.text
+      mp3.tag2.TCON = channel.itunes_category&.text || 'Podcast'
     end
 
     # 年
