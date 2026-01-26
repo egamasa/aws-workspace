@@ -101,12 +101,29 @@ def sns_publish(message)
   sns.publish(topic_arn: ENV['SNS_TOPIC_ARN'], message: message.to_json)
 end
 
-def send_notify(status, file_name)
+def send_notify(status:, audio_url: nil, file_name: nil, error_msg: nil)
   title = 'Podcast Download'
-  description = 'ダウンロード完了'
-  fields = [{ name: 'File', value: file_name, inline: false }]
+  description =
+    if status == :ok
+      'ダウンロード完了'
+    elsif audio_url
+      'ダウンロードエラー'
+    else
+      '保存エラー'
+    end
 
-  message = { title:, status:, description:, fields:, timestamp: Time.now }
+  fields = []
+  if status == :ok
+    fields << { name: 'File', value: file_name, inline: false }
+  elsif audio_url
+    fields << { name: 'URL', value: audio_url, inline: false }
+    fields << { name: 'Error', value: error_msg, inline: false }
+  else
+    fields << { name: 'File', value: file_name, inline: false }
+    fields << { name: 'Error', value: error_msg, inline: false }
+  end
+
+  message = { title:, status: status.to_s.upcase, description:, fields:, timestamp: Time.now }
 
   sns_publish(message)
 end
@@ -146,6 +163,7 @@ def main(event, context)
       download_file(audio_url, file_path)
     rescue => e
       LOGGER.error("Failed to download: #{e.message}")
+      send_notify(status: :error, audio_url:, error_msg: e.message) if ENV['SNS_TOPIC_ARN']
       next
     end
 
@@ -161,10 +179,11 @@ def main(event, context)
       res = upload_to_s3(file_path, file_name)
       if res.etag
         LOGGER.info("Download completed: #{file_name}")
-        send_notify('OK', file_name) if ENV['SNS_TOPIC_ARN']
+        send_notify(status: :ok, file_name:) if ENV['SNS_TOPIC_ARN']
       end
     rescue => e
       LOGGER.error("Failed to upload to S3: #{e.message}")
+      send_notify(status: :error, file_name:, error_msg: e.message) if ENV['SNS_TOPIC_ARN']
     ensure
       File.delete(file_path) if File.exist?(file_path)
     end
