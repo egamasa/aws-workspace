@@ -101,7 +101,7 @@ def sns_publish(message)
   sns.publish(topic_arn: ENV['SNS_TOPIC_ARN'], message: message.to_json)
 end
 
-def send_notify(status:, audio_url: nil, file_name: nil, error_msg: nil)
+def send_notify(status:, audio_url: nil, file_name: nil, item_title: nil, error_msg: nil)
   title = 'Podcast Download'
   description =
     if status == :ok
@@ -115,6 +115,7 @@ def send_notify(status:, audio_url: nil, file_name: nil, error_msg: nil)
   fields = []
   if status == :ok
     fields << { name: 'File', value: file_name, inline: false }
+    fields << { name: 'Episode', value: item_title, inline: false }
   elsif audio_url
     fields << { name: 'URL', value: audio_url, inline: false }
     fields << { name: 'Error', value: error_msg, inline: false }
@@ -179,7 +180,9 @@ def main(event, context)
       res = upload_to_s3(file_path, file_name)
       if res.etag
         LOGGER.info("Download completed: #{file_name}")
-        send_notify(status: :ok, file_name:) if ENV['SNS_TOPIC_ARN']
+        if ENV['SNS_TOPIC_ARN']
+          send_notify(status: :ok, file_name:, item_title: zenkaku_to_hankaku(item.title))
+        end
       end
     rescue => e
       LOGGER.error("Failed to upload to S3: #{e.message}")
