@@ -213,12 +213,18 @@ def main(event, context)
     ffmpeg_cmd.concat(['-c', 'copy', output_file_path])
 
     begin
-      _, stderr, _ = Open3.capture3(*ffmpeg_cmd)
+      _, stderr, status = Open3.capture3(*ffmpeg_cmd)
+      unless status.success?
+        logger.error({ text: 'FFmpeg failed', event:, error: stderr })
+        return
+      end
     rescue => e
-      logger.error({ text: "Error on FFmpeg: #{ffmpeg_cmd}", event:, error: stderr })
+      logger.error({ text: 'Error on FFmpeg', event:, error: e })
+      return
     end
   else
     logger.error({ text: 'Failed to download segments', event: })
+    return
   end
 
   begin
