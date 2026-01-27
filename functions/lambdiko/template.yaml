@@ -1,9 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  SAM Template for lambda-radiko
-
-  lambda-radiko: IP Simulcast Radio Download Tool for AWS Lambda
+  lambdiko: IP simulcast radio download tools for AWS Lambda
 
 Parameters:
   BucketName:

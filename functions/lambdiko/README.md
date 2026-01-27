@@ -1,6 +1,6 @@
-# lambda-radiko
+# lambdiko
 
-IPサイマル配信 ラジオ番組自動ダウンロードスクリプト for AWS Lambda
+IPサイマルラジオ ダウンロードスクリプト for AWS Lambda
 
 ## 対応サービス
 
@@ -15,6 +15,7 @@ IPサイマル配信 ラジオ番組自動ダウンロードスクリプト for 
 ## デプロイ
 
 ### FFmpeg バイナリの入手
+
 ビルド実行前に、 https://www.johnvansickle.com/ffmpeg/ より **ARM64** 版の静的ビルドバイナリをダウンロードし、`layers/bin` ディレクトリ内に ffmpeg を配置する。
 
 ### デプロイ
