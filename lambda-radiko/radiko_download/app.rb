@@ -70,13 +70,13 @@ def download_segments(urls, file_dir)
   threads = []
   segment_file_path_list = []
 
-  urls.each do |url|
+  urls.each_with_index do |url, index|
     file_name = File.basename(url)
     file_path = "#{file_dir}/#{file_name}"
 
     threads << Thread.new do
-      result = semaphore.synchronize { download_file(url, file_path) }
-      segment_file_path_list << file_path if result
+      result = download_file(url, file_path)
+      semaphore.synchronize { segment_file_path_list[index] = result ? file_path : nil }
     end
 
     threads.shift.join while threads.size >= THREAD_LIMIT
@@ -84,7 +84,7 @@ def download_segments(urls, file_dir)
 
   threads.each(&:join)
 
-  return segment_file_path_list
+  return segment_file_path_list.compact
 end
 
 def build_metadata_options(metadata)
