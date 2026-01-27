@@ -70,13 +70,13 @@ def download_segments(urls, file_dir)
   threads = []
   segment_file_path_list = []
 
-  urls.each do |url|
+  urls.each_with_index do |url, index|
     file_name = File.basename(url)
     file_path = "#{file_dir}/#{file_name}"
 
     threads << Thread.new do
-      result = semaphore.synchronize { download_file(url, file_path) }
-      segment_file_path_list << file_path if result
+      result = download_file(url, file_path)
+      semaphore.synchronize { segment_file_path_list[index] = result ? file_path : nil }
     end
 
     threads.shift.join while threads.size >= THREAD_LIMIT
@@ -84,7 +84,7 @@ def download_segments(urls, file_dir)
 
   threads.each(&:join)
 
-  return segment_file_path_list
+  return segment_file_path_list.compact
 end
 
 def build_metadata_options(metadata)
@@ -94,7 +94,7 @@ def build_metadata_options(metadata)
     artist: metadata['artist'],
     album: metadata['album'],
     album_artist: metadata['album_artist'],
-    date: Time.parse(metadata['date']).strftime('%Y-%m-%d'),
+    date: metadata['date'] ? Time.parse(metadata['date']).strftime('%Y-%m-%d') : nil,
     comment: metadata['comment']
   }.each do |key, value|
     next unless value && !value.empty?
@@ -108,9 +108,10 @@ end
 def upload_to_s3(file_path, file_name)
   s3_client = Aws::S3::Client.new
   s3_bucket = ENV['BUCKET_NAME']
-  file_content = File.open(file_path, 'rb')
 
-  s3_client.put_object(bucket: s3_bucket, key: file_name, body: file_content)
+  File.open(file_path, 'rb') do |file|
+    s3_client.put_object(bucket: s3_bucket, key: file_name, body: file)
+  end
 end
 
 def main(event, context)
@@ -177,6 +178,7 @@ def main(event, context)
 
     metadata_options = build_metadata_options(event['metadata'])
 
+    artwork_option = nil
     unless event['metadata']['img'].empty?
       artwork_path = "#{file_dir}/#{File.basename(event['metadata']['img'])}"
       download_file(event['metadata']['img'], artwork_path)
@@ -192,8 +194,6 @@ def main(event, context)
         '-id3v2_version',
         '3'
       ]
-    else
-      artwork_path = nil
     end
 
     ffmpeg_path = '/opt/bin/ffmpeg'
@@ -208,17 +208,23 @@ def main(event, context)
       '-i',
       segment_list_file_path
     ]
-    ffmpeg_cmd.concat(artwork_option) if artwork_path
+    ffmpeg_cmd.concat(artwork_option) if artwork_option
     ffmpeg_cmd.concat(metadata_options)
     ffmpeg_cmd.concat(['-c', 'copy', output_file_path])
 
     begin
-      _, stderr, _ = Open3.capture3(*ffmpeg_cmd)
+      _, stderr, status = Open3.capture3(*ffmpeg_cmd)
+      unless status.success?
+        logger.error({ text: 'FFmpeg failed', event:, error: stderr })
+        return
+      end
     rescue => e
-      logger.error({ text: "Error on FFmpeg: #{ffmpeg_cmd}", event:, error: stderr })
+      logger.error({ text: 'Error on FFmpeg', event:, error: e })
+      return
     end
   else
     logger.error({ text: 'Failed to download segments', event: })
+    return
   end
 
   begin
