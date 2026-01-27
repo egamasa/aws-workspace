@@ -13,7 +13,7 @@ Parameters:
 
 Globals:
   Function:
-    Runtime: ruby3.3
+    Runtime: ruby3.4
     Architectures:
       - arm64
     LoggingConfig:
@@ -76,11 +76,11 @@ Resources:
   FFmpegLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: FFmpegLayer
+      LayerName: ffmpeg-layer
       Description: FFmpeg binary
       ContentUri: layers/
       CompatibleRuntimes:
-        - ruby3.3
+        - ruby3.4
 
   LambdikoDownloadBucket:
     Type: AWS::S3::Bucket
