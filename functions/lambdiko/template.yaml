@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  lambdiko: IP simulcast radio download tools for AWS Lambda
+  Lambdiko - IP simulcast radio download tools for AWS Lambda
 
 Parameters:
   BucketName:
@@ -9,7 +9,7 @@ Parameters:
     Default: radiko-download
   LogGroupName:
     Type: String
-    Default: /aws/lambda/lambda-radiko
+    Default: /aws/lambda/lambdiko
 
 Globals:
   Function:
@@ -24,8 +24,8 @@ Resources:
   RadikoDownloadFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: RadikoDownload
-      CodeUri: radiko_download/
+      FunctionName: lambdiko-radiko-download
+      CodeUri: radiko-download/
       Handler: app.lambda_handler
       MemorySize: 512
       Timeout: 600
@@ -41,8 +41,8 @@ Resources:
   RadiruDownloadFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: RadiruDownload
-      CodeUri: radiru_download/
+      FunctionName: lambdiko-radiru-download
+      CodeUri: radiru-download/
       Handler: app.lambda_handler
       MemorySize: 512
       Timeout: 600
@@ -55,11 +55,11 @@ Resources:
         - S3WritePolicy:
             BucketName: !Ref BucketName
 
-  RadioProgramSearchFunction:
+  ProgramSearchFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: RadioProgramSearch
-      CodeUri: radio_program_search/
+      FunctionName: lambdiko-program-search
+      CodeUri: program-search/
       Handler: app.lambda_handler
       MemorySize: 128
       Timeout: 60
@@ -82,7 +82,7 @@ Resources:
       CompatibleRuntimes:
         - ruby3.3
 
-  RadikoDownloadBucket:
+  LambdikoDownloadBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Ref BucketName
@@ -96,10 +96,10 @@ Outputs:
     Description: RadiruDownload Lambda Function ARN
     Value: !GetAtt RadiruDownloadFunction.Arn
 
-  RadioProgramSearchFunction:
-    Description: RadioProgramSearch Lambda Function ARN
-    Value: !GetAtt RadioProgramSearchFunction.Arn
+  ProgramSearchFunction:
+    Description: ProgramSearch Lambda Function ARN
+    Value: !GetAtt ProgramSearchFunction.Arn
 
-  RadioDownloadBucket:
-    Description: RadioDownload S3 Bucket ARN
-    Value: !GetAtt RadikoDownloadBucket.Arn
+  LambdikoDownloadBucket:
+    Description: LambdikoDownload S3 Bucket ARN
+    Value: !GetAtt LambdikoDownloadBucket.Arn

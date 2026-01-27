@@ -182,7 +182,7 @@ def search_radiru_programs(list, keyword:, custom_title: nil)
 end
 
 def main(event, context)
-  logger = Logger.new($stdout, progname: 'RadioProgramSearch')
+  logger = Logger.new($stdout, progname: 'Lambdiko - Program Search')
   logger.formatter =
     proc do |severity, datetime, progname, msg|
       log = {

@@ -133,7 +133,7 @@ def upload_to_s3(file_path, file_name)
 end
 
 def main(event, context)
-  logger = Logger.new($stdout, progname: 'RadiruDownload')
+  logger = Logger.new($stdout, progname: 'Lambdiko - Radiru Download')
   logger.formatter =
     proc do |severity, datetime, progname, msg|
       log = {

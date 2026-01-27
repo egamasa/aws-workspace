@@ -1,6 +1,6 @@
-# lambdiko
+# Lambdiko（らむじこ）
 
-IPサイマルラジオ ダウンロードスクリプト for AWS Lambda
+IPサイマルラジオ ダウンロードツール for AWS Lambda
 
 ## 対応サービス
 
@@ -9,8 +9,9 @@ IPサイマルラジオ ダウンロードスクリプト for AWS Lambda
 
 ## 動作環境
 
-- AWS Lambda (arm64)
-- Ruby 3.3
+- AWS Lambda
+  - arm64 アーキテクチャ
+  - Ruby 3.3 ランタイム
 
 ## デプロイ
 
@@ -30,4 +31,4 @@ sam deploy --guided
 - BucketName
   - 音声ファイルの保存先 S3 バケット名
 - LogGroupName
-  - ログの出力先ロググループ名
+  - ログ出力先の CloudWatch ロググループ名
