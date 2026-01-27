@@ -8,6 +8,7 @@ require 'securerandom'
 require 'time'
 require_relative 'lib/radiko'
 
+LOGGER = Logger.new($stdout)
 RETRY_LIMIT = 3
 THREAD_LIMIT = 3
 SEEK_SEC = 300
@@ -115,22 +116,6 @@ def upload_to_s3(file_path, file_name)
 end
 
 def main(event, context)
-  logger = Logger.new($stdout, progname: 'Lambdiko - Radiko Download')
-  logger.formatter =
-    proc do |severity, datetime, progname, msg|
-      log = {
-        timestamp: datetime.iso8601,
-        level: severity,
-        progname: progname,
-        message: msg[:text],
-        event: msg[:event]
-      }
-      log[:error] = { type: msg[:error].class.to_s, backtrace: msg[:error].backtrace } if msg[
-        :error
-      ]
-      log.to_json + "\n"
-    end
-
   client = Radiko::Client.new
   area_id = client.get_area_id_by_station_id(event['station_id'])
   stream_info = client.get_timefree_stream_info(event['station_id'])
@@ -214,24 +199,25 @@ def main(event, context)
 
     begin
       _, stderr, status = Open3.capture3(*ffmpeg_cmd)
+
       unless status.success?
-        logger.error({ text: 'FFmpeg failed', event:, error: stderr })
+        LOGGER.error("FFmpeg failed: #{stderr}")
         return
       end
     rescue => e
-      logger.error({ text: 'Error on FFmpeg', event:, error: e })
+      LOGGER.error("FFmpeg Error: #{e.message}")
       return
     end
   else
-    logger.error({ text: 'Failed to download segments', event: })
+    LOGGER.error('Failed to download segments')
     return
   end
 
   begin
     res = upload_to_s3(output_file_path, output_file_name)
-    logger.info({ text: "Download completed: #{output_file_name}", event: }) if res.etag
+    LOGGER.info("Download completed: #{output_file_name}") if res.etag
   rescue => e
-    logger.error({ text: "Failed to upload to S3: #{output_file_path}", event:, error: e })
+    LOGGER.error("Failed to upload to S3: #{output_file_path} - #{e.message}")
   end
 end
 

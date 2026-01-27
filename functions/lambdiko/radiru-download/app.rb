@@ -7,6 +7,7 @@ require 'openssl'
 require 'securerandom'
 require 'uri'
 
+LOGGER = Logger.new($stdout)
 RETRY_LIMIT = 3
 THREAD_LIMIT = 3
 
@@ -133,22 +134,6 @@ def upload_to_s3(file_path, file_name)
 end
 
 def main(event, context)
-  logger = Logger.new($stdout, progname: 'Lambdiko - Radiru Download')
-  logger.formatter =
-    proc do |severity, datetime, progname, msg|
-      log = {
-        timestamp: datetime.iso8601,
-        level: severity,
-        progname: progname,
-        message: msg[:text],
-        event: msg[:event]
-      }
-      log[:error] = { type: msg[:error].class.to_a, backtrace: msg[:error].backtrace } if msg[
-        :error
-      ]
-      log.to_json + "\n"
-    end
-
   stream_url = event['stream_url']
   base_url = stream_url.match(%r{^(https://.*/)}).to_s
 
@@ -215,19 +200,26 @@ def main(event, context)
     ffmpeg_cmd.concat(['-c', 'copy', output_file_path])
 
     begin
-      _, stderr, _ = Open3.capture3(*ffmpeg_cmd)
+      _, stderr, status = Open3.capture3(*ffmpeg_cmd)
+
+      unless status.success?
+        LOGGER.error("FFmpeg failed: #{stderr}")
+        return
+      end
     rescue => e
-      logger.error({ text: "Error on FFmpeg: #{ffmpeg_cmd}", event:, error: stderr })
+      LOGGER.error("FFmpeg Error: #{e.message}")
+      return
     end
   else
-    logger.error({ text: 'Failed to download segments', event: })
+    LOGGER.error('Failed to download segments')
+    return
   end
 
   begin
     res = upload_to_s3(output_file_path, output_file_name)
-    logger.info({ text: "Download completed: #{output_file_name}", event: }) if res.etag
+    LOGGER.info("Download completed: #{output_file_name}") if res.etag
   rescue => e
-    logger.error({ text: "Failed to upload to S3: #{output_file_path}", event:, error: e })
+    LOGGER.error("Failed to upload to S3: #{output_file_path} - #{e.message}")
   end
 end
 

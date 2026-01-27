@@ -14,10 +14,8 @@ Parameters:
 Globals:
   Function:
     Runtime: ruby3.4
-    Architectures:
-      - arm64
+    Architectures: [arm64]
     LoggingConfig:
-      LogFormat: JSON
       LogGroup: !Ref LogGroupName
 
 Resources:

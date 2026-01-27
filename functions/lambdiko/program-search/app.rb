@@ -7,6 +7,7 @@ require 'rexml/document'
 require 'time'
 require 'uri'
 
+LOGGER = Logger.new($stdout)
 WDAY_LIST = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }.freeze
 
 # 直近の指定曜日の日付を算出
@@ -182,19 +183,6 @@ def search_radiru_programs(list, keyword:, custom_title: nil)
 end
 
 def main(event, context)
-  logger = Logger.new($stdout, progname: 'Lambdiko - Program Search')
-  logger.formatter =
-    proc do |severity, datetime, progname, msg|
-      log = {
-        timestamp: datetime.iso8601,
-        level: severity,
-        progname: progname,
-        message: msg[:text],
-        event: msg[:event]
-      }
-      log.to_json + "\n"
-    end
-
   if event['station_id'] == 'NHK'
     mode = :radiru
   else
@@ -227,7 +215,7 @@ def main(event, context)
   end
 
   if programs.empty?
-    logger.info({ text: "No program found: #{event['title']}", event: })
+    LOGGER.info("No program found: #{event['title']}")
   else
     lambda_client = Aws::Lambda::Client.new
   end
@@ -241,9 +229,9 @@ def main(event, context)
       )
 
     if res.status_code == 202
-      logger.info({ text: "Download requested: #{program[:title]}", event: })
+      LOGGER.info("Download requested: #{program[:title]}")
     else
-      logger.error({ text: "Download request failed: #{program[:title]}", event: })
+      LOGGER.error("Download request failed: #{program[:title]}")
     end
   end
 end
