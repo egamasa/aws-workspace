@@ -10,6 +10,16 @@ require_relative 'lib/radiko'
 
 RETRY_LIMIT = 3
 THREAD_LIMIT = 3
+SEEK_SEC = 300
+
+def to_time(time_str)
+  return Time.strptime(time_str, '%Y%m%d%H%M%S')
+end
+
+def seek(seek_time, seek_sec = SEEK_SEC)
+  sought_time = seek_time + seek_sec
+  return sought_time, sought_time.strftime('%Y%m%d%H%M%S')
+end
 
 def parse_playlist(playlist)
   list = []
@@ -122,20 +132,41 @@ def main(event, context)
 
   client = Radiko::Client.new
   area_id = client.get_area_id_by_station_id(event['station_id'])
-  stream_info = client.get_timefree_stream_info(event['station_id'], event['ft'], event['to'])
+  stream_info = client.get_timefree_stream_info(event['station_id'])
 
+  lsid = SecureRandom.hex(16)
   headers = { 'X-Radiko-AreaId' => area_id, 'X-Radiko-AuthToken' => stream_info[:auth_token] }
-  pre_playlist = HTTP.headers(headers).get(stream_info[:url])
-  playlist_urls = parse_playlist(pre_playlist)
+  params = {
+    lsid: lsid,
+    station_id: event['station_id'],
+    l: SEEK_SEC.to_s,
+    start_at: event['ft'],
+    end_at: event['to'],
+    type: 'b',
+    ft: event['ft'],
+    to: event['to']
+  }
 
   segment_urls = []
-  playlist_urls.each do |playlist_url|
-    playlist = HTTP.get(playlist_url)
-    segments = parse_playlist(playlist)
-    segment_urls.concat(segments)
+  seek_time = to_time(event['ft'])
+  seek_str = event['ft']
+  end_time = to_time(event['to'])
+
+  while seek_time < end_time
+    params[:seek] = seek_str
+    pre_playlist = HTTP.headers(headers).get(stream_info[:url], params:)
+    playlist_urls = parse_playlist(pre_playlist)
+
+    playlist_urls.each do |playlist_url|
+      playlist = HTTP.get(playlist_url)
+      segments = parse_playlist(playlist)
+      segment_urls.concat(segments)
+    end
+
+    seek_time, seek_str = seek(seek_time)
   end
 
-  file_dir = "/tmp/#{SecureRandom.uuid}"
+  file_dir = "/tmp/#{lsid}"
   Dir.mkdir(file_dir)
   segment_list_file_path = create_segment_list_file(segment_urls, file_dir)
   segment_file_path_list = download_segments(segment_urls, file_dir)

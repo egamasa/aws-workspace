@@ -72,21 +72,15 @@ module Radiko
       { auth_token:, url: "#{base_urls[0]}?station_id=#{station_id}&l=15&lsid=&type=b" }
     end
 
-    def get_timefree_stream_info(station_id, ft, to)
+    def get_timefree_stream_info(station_id)
       return {} unless is_available_station_id?(station_id)
-      raise 'Invalid ft' unless ft.match?(/\d{14}/)
-      raise 'Invalid to' unless to.match?(/\d{14}/)
 
       user_id = SecureRandom.hex(16)
 
       auth_token = get_auth_token_by_station_id(station_id, user_id)
-      base_url = 'https://radiko.jp/v2/api/ts/playlist.m3u8'
+      base_url = 'https://tf-f-rpaa-radiko.smartstream.ne.jp/tf/playlist.m3u8'
 
-      {
-        auth_token:,
-        url:
-          "#{base_url}?station_id=#{station_id}&start_at=#{ft}&ft=#{ft}&end_at=#{to}&to=#{to}&preroll=0&l=15&lsid=#{user_id}&type=b"
-      }
+      { auth_token:, url: base_url }
     end
 
     def get_area_id_by_station_id(station_id)
