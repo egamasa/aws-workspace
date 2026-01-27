@@ -94,7 +94,7 @@ def build_metadata_options(metadata)
     artist: metadata['artist'],
     album: metadata['album'],
     album_artist: metadata['album_artist'],
-    date: Time.parse(metadata['date']).strftime('%Y-%m-%d'),
+    date: metadata['date'] ? Time.parse(metadata['date']).strftime('%Y-%m-%d') : nil,
     comment: metadata['comment']
   }.each do |key, value|
     next unless value && !value.empty?
@@ -177,6 +177,7 @@ def main(event, context)
 
     metadata_options = build_metadata_options(event['metadata'])
 
+    artwork_option = nil
     unless event['metadata']['img'].empty?
       artwork_path = "#{file_dir}/#{File.basename(event['metadata']['img'])}"
       download_file(event['metadata']['img'], artwork_path)
@@ -192,8 +193,6 @@ def main(event, context)
         '-id3v2_version',
         '3'
       ]
-    else
-      artwork_path = nil
     end
 
     ffmpeg_path = '/opt/bin/ffmpeg'
@@ -208,7 +207,7 @@ def main(event, context)
       '-i',
       segment_list_file_path
     ]
-    ffmpeg_cmd.concat(artwork_option) if artwork_path
+    ffmpeg_cmd.concat(artwork_option) if artwork_option
     ffmpeg_cmd.concat(metadata_options)
     ffmpeg_cmd.concat(['-c', 'copy', output_file_path])
 
