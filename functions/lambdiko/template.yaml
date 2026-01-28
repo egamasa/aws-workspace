@@ -80,11 +80,6 @@ Resources:
       CompatibleRuntimes:
         - ruby3.4
 
-  LambdikoDownloadBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref BucketName
-
 Outputs:
   RadikoDownloadFunction:
     Description: RadikoDownload Lambda Function ARN
@@ -97,7 +92,3 @@ Outputs:
   ProgramSearchFunction:
     Description: ProgramSearch Lambda Function ARN
     Value: !GetAtt ProgramSearchFunction.Arn
-
-  LambdikoDownloadBucket:
-    Description: LambdikoDownload S3 Bucket ARN
-    Value: !GetAtt LambdikoDownloadBucket.Arn
