@@ -1,4 +1,5 @@
 require 'aws-sdk-lambda'
+require 'aws-sdk-sns'
 require 'date'
 require 'json'
 require 'logger'
@@ -182,8 +183,36 @@ def search_radiru_programs(list, keyword:, custom_title: nil)
   return programs
 end
 
+def sns_publish(message)
+  sns = Aws::SNS::Client.new
+  sns.publish(topic_arn: ENV['SNS_TOPIC_ARN'], message: message.to_json)
+end
+
+def send_notify(status: nil, description:)
+  title =
+    case status
+    when :info
+      'リクエスト成功'
+    when :warn
+      '検索結果なし'
+    when :error
+      'リクエストエラー'
+    else
+      nil
+    end
+
+  message = {
+    service: 'Lambdiko',
+    title:,
+    status: status.to_s.upcase,
+    description:,
+    timestamp: Time.now
+  }
+  sns_publish(message)
+end
+
 def main(event, context)
-  if event['station_id'] == 'NHK'
+  if event['station_id'].to_s.upcase == 'NHK'
     mode = :radiru
   else
     mode = :radiko
@@ -215,7 +244,8 @@ def main(event, context)
   end
 
   if programs.empty?
-    LOGGER.info("No program found: #{event['title']}")
+    LOGGER.warn("No program found: #{JSON.generate(event, ascii_only: false)}")
+    send_notify(status: :warn, description: "#{event['target']}: #{event['keyword']}")
   else
     lambda_client = Aws::Lambda::Client.new
   end
@@ -229,9 +259,15 @@ def main(event, context)
       )
 
     if res.status_code == 202
-      LOGGER.info("Download requested: #{program[:title]}")
+      LOGGER.info(
+        "Download requested -> #{download_func_name}: #{JSON.generate(program, ascii_only: false)}"
+      )
+      send_notify(status: :info, description: program[:title])
     else
-      LOGGER.error("Download request failed: #{program[:title]}")
+      LOGGER.error(
+        "Download request failed -> #{download_func_name}: #{JSON.generate(program, ascii_only: false)}"
+      )
+      send_notify(status: :error, description: program[:title])
     end
   end
 end

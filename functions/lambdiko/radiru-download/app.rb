@@ -1,4 +1,5 @@
 require 'aws-sdk-s3'
+require 'aws-sdk-sns'
 require 'http'
 require 'json'
 require 'logger'
@@ -128,9 +129,39 @@ end
 def upload_to_s3(file_path, file_name)
   s3_client = Aws::S3::Client.new
   s3_bucket = ENV['BUCKET_NAME']
-  file_content = File.open(file_path, 'rb')
 
-  s3_client.put_object(bucket: s3_bucket, key: file_name, body: file_content)
+  File.open(file_path, 'rb') do |file|
+    s3_client.put_object(bucket: s3_bucket, key: file_name, body: file)
+  end
+
+  return "s3://#{s3_bucket}/#{file_name}"
+end
+
+def sns_publish(message)
+  sns = Aws::SNS::Client.new
+  sns.publish(topic_arn: ENV['SNS_TOPIC_ARN'], message: message.to_json)
+end
+
+def send_notify(status: nil, description: nil, fields: nil)
+  title =
+    case status
+    when :ok
+      'ダウンロード完了'
+    when :error
+      'ダウンロードエラー'
+    else
+      nil
+    end
+
+  message = {
+    service: 'Lambdiko',
+    title:,
+    status: status.to_s.upcase,
+    description:,
+    fields:,
+    timestamp: Time.now
+  }
+  sns_publish(message)
 end
 
 def main(event, context)
@@ -204,22 +235,40 @@ def main(event, context)
 
       unless status.success?
         LOGGER.error("FFmpeg failed: #{stderr}")
+        send_notify(status: :error, description: "FFmpeg: #{output_file_name}\n```\n#{stderr}\n```")
         return
       end
     rescue => e
       LOGGER.error("FFmpeg Error: #{e.message}")
+      send_notify(
+        status: :error,
+        description: "FFmpeg: #{output_file_name}\n```\n#{e.message}\n```"
+      )
       return
     end
   else
     LOGGER.error('Failed to download segments')
+    send_notify(status: :error, description: "Download segments: #{output_file_name}")
     return
   end
 
   begin
-    res = upload_to_s3(output_file_path, output_file_name)
-    LOGGER.info("Download completed: #{output_file_name}") if res.etag
+    s3_file_path = upload_to_s3(output_file_path, output_file_name)
+
+    file_size = "#{(File.size(output_file_path).to_f / 1024 / 1024).round(2)} MB"
+    LOGGER.info("Download completed: #{s3_file_path} (#{file_size})")
+
+    fields = [
+      { name: 'File', value: s3_file_path, inline: false },
+      { name: 'Size', value: file_size, inline: true }
+    ]
+    send_notify(status: :ok, fields: fields)
   rescue => e
     LOGGER.error("Failed to upload to S3: #{output_file_path} - #{e.message}")
+    send_notify(
+      status: :error,
+      description: "S3 Upload: #{output_file_name}\n```\n#{e.message}\n```"
+    )
   end
 end
 

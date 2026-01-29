@@ -10,13 +10,19 @@ Parameters:
   LogGroupName:
     Type: String
     Default: /aws/lambda/lambdiko
+  NotifySnsTopicArn:
+    Type: String
 
 Globals:
   Function:
     Runtime: ruby3.4
     Architectures: [arm64]
+    Handler: app.lambda_handler
     LoggingConfig:
       LogGroup: !Ref LogGroupName
+    Environment:
+      Variables:
+        SNS_TOPIC_ARN: !Ref NotifySnsTopicArn
 
 Resources:
   RadikoDownloadFunction:
@@ -24,7 +30,6 @@ Resources:
     Properties:
       FunctionName: lambdiko-radiko-download
       CodeUri: radiko-download/
-      Handler: app.lambda_handler
       MemorySize: 512
       Timeout: 600
       Layers:
@@ -35,13 +40,17 @@ Resources:
       Policies:
         - S3WritePolicy:
             BucketName: !Ref BucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref NotifySnsTopicArn
 
   RadiruDownloadFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: lambdiko-radiru-download
       CodeUri: radiru-download/
-      Handler: app.lambda_handler
       MemorySize: 512
       Timeout: 600
       Layers:
@@ -52,13 +61,17 @@ Resources:
       Policies:
         - S3WritePolicy:
             BucketName: !Ref BucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref NotifySnsTopicArn
 
   ProgramSearchFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: lambdiko-program-search
       CodeUri: program-search/
-      Handler: app.lambda_handler
       MemorySize: 128
       Timeout: 60
       Environment:
@@ -70,6 +83,11 @@ Resources:
             FunctionName: !Ref RadikoDownloadFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref RadiruDownloadFunction
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref NotifySnsTopicArn
 
   FFmpegLayer:
     Type: AWS::Serverless::LayerVersion
