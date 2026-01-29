@@ -15,11 +15,9 @@ WDAY_LIST = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }.freeze
 def prev_date_of_week(week, include_today: true)
   wday = WDAY_LIST.fetch(week)
   base_date = Date.today - (include_today ? 0 : 1)
-  base_date_wday = base_date.wday
-  days_ago = (base_date_wday - wday) % 7
-  prev_date = base_date - days_ago
+  days_ago = (base_date.wday - wday) % 7
 
-  return prev_date
+  base_date - days_ago
 end
 
 def remove_html_tags(text)
@@ -30,111 +28,82 @@ def zenkaku_to_hankaku(text)
   text.to_s.tr('Ａ-Ｚａ-ｚ０-９　', 'A-Za-z0-9 ')
 end
 
+def http_get_xml(url)
+  res = Net::HTTP.get_response(URI.parse(url))
+  return REXML::Document.new(res.body) if res.is_a?(Net::HTTPSuccess)
+
+  raise "Failed to fetch XML: HTTP #{res.code} - #{url}"
+end
+
+def http_get_json(url)
+  res = Net::HTTP.get_response(URI.parse(url))
+  return JSON.parse(res.body) if res.is_a?(Net::HTTPSuccess)
+
+  raise "Failed to fetch JSON: HTTP #{res.code} - #{url}"
+end
+
 # radiko 番組表（日付・放送局ID指定）取得
 def radiko_program_xml(date, station_id)
   url = "https://radiko.jp/v3/program/station/date/#{date.strftime('%Y%m%d')}/#{station_id}.xml"
-
-  uri = URI.parse(url)
-  res = Net::HTTP.get_response(uri)
-
-  if res.is_a?(Net::HTTPSuccess)
-    xml_data = res.body
-    xml_doc = REXML::Document.new(xml_data)
-
-    return xml_doc
-  end
+  http_get_xml(url)
 end
 
 # radiko 番組表から放送局名抽出
 def parse_station_name(xml_doc, station_id = nil)
-  if station_id
-    xml_doc
-      .elements
-      .to_a('//station')
-      .each do |station|
-        return station.elements['name'].text if station.attributes['id'] == station_id
-      end
-  else
-    return xml_doc.elements.to_a('//station').first&.elements['name'].text
-  end
+  stations = xml_doc.elements.to_a('//station')
+  return stations.first&.elements['name']&.text unless station_id
+
+  stations.find { |s| s.attributes['id'] == station_id }&.elements['name']&.text
 end
 
 # radiko 番組検索
 def search_radiko_programs(xml_doc, station_id, target: 'title', keyword:, custom_title: nil)
   station_name = parse_station_name(xml_doc)
-
   programs = xml_doc.elements.to_a('//progs/prog')
 
-  result =
-    programs
-      .select do |program|
-        title = program.elements[target]&.text
-        title && title.include?(keyword)
-      end
-      .map do |program|
-        {
-          title: custom_title || program.elements['title']&.text,
-          station_id: station_id,
-          ft: program.attributes['ft'],
-          to: program.attributes['to'],
-          metadata: {
-            title: program.elements['title']&.text,
-            artist: program.elements['pfm']&.text,
-            album: custom_title || program.elements['title']&.text,
-            album_artist: station_name,
-            date: xml_doc.elements['//progs/date']&.text,
-            comment:
-              "#{remove_html_tags(program.elements['desc']&.text)}#{remove_html_tags(program.elements['info']&.text)}",
-            img: program.elements['img']&.text
-          }
+  programs
+    .select { |prog| prog.elements[target]&.text&.include?(keyword) }
+    .map do |prog|
+      {
+        title: custom_title || prog.elements['title']&.text,
+        station_id: station_id,
+        ft: prog.attributes['ft'],
+        to: prog.attributes['to'],
+        metadata: {
+          title: prog.elements['title']&.text,
+          artist: prog.elements['pfm']&.text,
+          album: custom_title || prog.elements['title']&.text,
+          album_artist: station_name,
+          date: xml_doc.elements['//progs/date']&.text,
+          comment:
+            "#{remove_html_tags(prog.elements['desc']&.text)}#{remove_html_tags(prog.elements['info']&.text)}",
+          img: prog.elements['img']&.text
         }
-      end
-
-  return result
+      }
+    end
 end
 
 # らじる 番組表（日付指定）取得
 def radiru_program_list(date)
   url =
     "https://www.nhk.or.jp/radio-api/app/v1/web/ondemand/corners?onair_date=#{date.strftime('%Y%m%d')}"
-
-  uri = URI.parse(url)
-  res = Net::HTTP.get_response(uri)
-
-  if res.is_a?(Net::HTTPSuccess)
-    json_data = res.body
-    program_list = JSON.parse(json_data)
-
-    return program_list
-  end
+  http_get_json(url)
 end
 
 # らじる 番組情報取得
 def get_radiru_program_info(program)
   url =
     "https://www.nhk.or.jp/radio-api/app/v1/web/ondemand/series?site_id=#{program['series_site_id']}&corner_site_id=#{program['corner_site_id']}"
-
-  uri = URI.parse(url)
-  res = Net::HTTP.get_response(uri)
-
-  if res.is_a?(Net::HTTPSuccess)
-    json_data = res.body
-    program_info = JSON.parse(json_data)
-
-    return program_info
-  end
+  http_get_json(url)
 end
 
 # らじる 番組開始＆終了時刻抽出
 def parse_radiru_aa_contents_id(aa_contents_id)
   data = aa_contents_id.split(';')
-
   start_time = Time.strptime(data[4][/^[^_]+/], '%Y-%m-%dT%H:%M:%S%z')
   end_time = Time.strptime(data[4][/[^_]+$/], '%Y-%m-%dT%H:%M:%S%z')
-  ft = start_time.strftime('%Y%m%d%H%M00')
-  to = end_time.strftime('%Y%m%d%H%M00')
 
-  return ft, to
+  [start_time.strftime('%Y%m%d%H%M00'), end_time.strftime('%Y%m%d%H%M00')]
 end
 
 # らじる 番組検索（番組タイトルのみ対応）
@@ -142,26 +111,24 @@ def search_radiru_programs(list, keyword:, custom_title: nil)
   onair_date = list['onair_date']
   programs_list = list['corners']
 
-  extracted_programs =
-    programs_list.select do |program|
-      title = program['title']
-      title && title.include?(keyword)
-    end
+  extracted_programs = programs_list.select { |prog| prog['title']&.include?(keyword) }
 
-  programs = []
-  extracted_programs.each do |program|
+  extracted_programs.flat_map do |program|
     program_info = get_radiru_program_info(program)
-    program_info['episodes'].each do |episode|
+    program_info['episodes'].filter_map do |episode|
       ft, to = parse_radiru_aa_contents_id(episode['aa_contents_id'])
       next unless ft.include?(onair_date)
 
-      if program_info['radio_broadcast'].split(',').count == 1
-        station_id = "NHK-#{program_info['radio_broadcast']}"
-      else
-        station_id = 'NHK'
-      end
+      station_id =
+        (
+          if program_info['radio_broadcast'].split(',').count == 1
+            "NHK-#{program_info['radio_broadcast']}"
+          else
+            'NHK'
+          end
+        )
 
-      programs << {
+      {
         title: custom_title || program_info['title'],
         station_id: station_id,
         ft: ft,
@@ -179,8 +146,6 @@ def search_radiru_programs(list, keyword:, custom_title: nil)
       }
     end
   end
-
-  return programs
 end
 
 def sns_publish(message)
@@ -212,75 +177,66 @@ def send_notify(status: nil, description:)
 end
 
 def main(event, context)
-  if event['station_id'].to_s.upcase == 'NHK'
-    mode = :radiru
-  else
-    mode = :radiko
-  end
-
-  is_today = event.key?('today') ? event['today'] : true
+  mode = event['station_id'].to_s.upcase == 'NHK' ? :radiru : :radiko
+  is_today = event.fetch('today', true)
   program_date = prev_date_of_week(event['week'].to_sym, include_today: is_today)
 
   # 検索テストモード（ダウンロード実行しない）
-  is_test = event.key?('test') ? event['test'] : false
+  is_test = event.fetch('test', false)
 
-  case mode
-  when :radiko
-    xml = radiko_program_xml(program_date, event['station_id'])
-    programs =
-      search_radiko_programs(
-        xml,
-        event['station_id'],
-        target: event['target'],
-        keyword: event['keyword'],
-        custom_title: event['title']
-      )
+  programs, download_func_name =
+    case mode
+    when :radiko
+      xml = radiko_program_xml(program_date, event['station_id'])
 
-    download_func_name = ENV['RADIKO_DL_FUNC_NAME']
-  when :radiru
-    list = radiru_program_list(program_date)
-    programs = search_radiru_programs(list, keyword: event['keyword'], custom_title: event['title'])
+      [
+        search_radiko_programs(
+          xml,
+          event['station_id'],
+          target: event['target'],
+          keyword: event['keyword'],
+          custom_title: event['title']
+        ),
+        ENV['RADIKO_DL_FUNC_NAME']
+      ]
+    when :radiru
+      list = radiru_program_list(program_date)
 
-    download_func_name = ENV['RADIRU_DL_FUNC_NAME']
-  else
-    programs = []
-  end
+      [
+        search_radiru_programs(list, keyword: event['keyword'], custom_title: event['title']),
+        ENV['RADIRU_DL_FUNC_NAME']
+      ]
+    else
+      [[], nil]
+    end
 
   # 検索テストモード: 検索結果を通知して処理終了
   if is_test
-    send_notify(
-      description:
-        "Event\n```json\n#{JSON.pretty_generate(event, ascii_only: false)}\n```\n\nResults\n```json\n#{JSON.pretty_generate(programs, ascii_only: false)}\n```"
+    return(
+      send_notify(
+        description:
+          "Event\n```json\n#{JSON.pretty_generate(event, ascii_only: false)}\n```\n\nResults\n```json\n#{JSON.pretty_generate(programs, ascii_only: false)}\n```"
+      )
     )
-    return
   end
 
   if programs.empty?
     LOGGER.warn("No program found: #{JSON.generate(event, ascii_only: false)}")
-    send_notify(status: :warn, description: "#{event['target']}: #{event['keyword']}")
-  else
-    lambda_client = Aws::Lambda::Client.new
+    return send_notify(status: :warn, description: "#{event['target']}: #{event['keyword']}")
   end
 
+  lambda_client = Aws::Lambda::Client.new
   programs.each do |program|
-    res =
-      lambda_client.invoke(
-        function_name: download_func_name,
-        invocation_type: 'Event',
-        payload: program.to_json
-      )
+    lambda_client.invoke(
+      function_name: download_func_name,
+      invocation_type: 'Event',
+      payload: program.to_json
+    )
 
-    if res.status_code == 202
-      LOGGER.info(
-        "Download requested -> #{download_func_name}: #{JSON.generate(program, ascii_only: false)}"
-      )
-      send_notify(status: :info, description: program[:title])
-    else
-      LOGGER.error(
-        "Download request failed -> #{download_func_name}: #{JSON.generate(program, ascii_only: false)}"
-      )
-      send_notify(status: :error, description: program[:title])
-    end
+    LOGGER.info(
+      "Download requested -> #{download_func_name}: #{JSON.generate(program, ascii_only: false)}"
+    )
+    send_notify(status: :info, description: program[:title])
   end
 end
 
@@ -289,5 +245,5 @@ def lambda_handler(event:, context:)
 rescue StandardError => e
   LOGGER.error("Error [#{e.class}] #{e.message}")
   LOGGER.error(e.backtrace.first(5).join("\n"))
-  send_notify(status: :error, description: "```\n#{e.message}\n```")
+  send_notify(status: :error, description: "[#{e.class}]\n```\n#{e.message}\n```")
 end
