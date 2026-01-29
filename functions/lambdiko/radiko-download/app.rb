@@ -78,7 +78,7 @@ def download_segments(urls, file_dir)
     end
   threads.each(&:join)
 
-  return segment_file_path_list.compact
+  segment_file_path_list.compact
 end
 
 def parse_metadata_date(date_str)
