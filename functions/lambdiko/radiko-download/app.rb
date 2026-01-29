@@ -1,6 +1,7 @@
 require 'aws-sdk-s3'
 require 'aws-sdk-sns'
 require 'base64'
+require 'fileutils'
 require 'http'
 require 'json'
 require 'logger'
@@ -156,83 +157,89 @@ def send_notify(status: nil, description: nil, fields: nil)
 end
 
 def main(event, context)
-  client = Radiko::Client.new
-  area_id = client.get_area_id_by_station_id(event['station_id'])
-  stream_info = client.get_timefree_stream_info(event['station_id'])
+  file_dir = nil
 
-  lsid = SecureRandom.hex(16)
-  headers = { 'X-Radiko-AreaId' => area_id, 'X-Radiko-AuthToken' => stream_info[:auth_token] }
-  params = {
-    lsid: lsid,
-    station_id: event['station_id'],
-    l: SEEK_SEC.to_s,
-    start_at: event['ft'],
-    end_at: event['to'],
-    type: 'b',
-    ft: event['ft'],
-    to: event['to']
-  }
+  begin
+    client = Radiko::Client.new
+    area_id = client.get_area_id_by_station_id(event['station_id'])
+    stream_info = client.get_timefree_stream_info(event['station_id'])
 
-  segment_urls = []
-  seek_time = to_time(event['ft'])
-  seek_str = event['ft']
-  end_time = to_time(event['to'])
+    lsid = SecureRandom.hex(16)
+    headers = { 'X-Radiko-AreaId' => area_id, 'X-Radiko-AuthToken' => stream_info[:auth_token] }
+    params = {
+      lsid: lsid,
+      station_id: event['station_id'],
+      l: SEEK_SEC.to_s,
+      start_at: event['ft'],
+      end_at: event['to'],
+      type: 'b',
+      ft: event['ft'],
+      to: event['to']
+    }
 
-  while seek_time < end_time
-    params[:seek] = seek_str
-    pre_playlist = HTTP.headers(headers).get(stream_info[:url], params:)
-    playlist_urls = parse_playlist(pre_playlist)
+    segment_urls = []
+    seek_time = to_time(event['ft'])
+    seek_str = event['ft']
+    end_time = to_time(event['to'])
 
-    playlist_urls.each do |playlist_url|
-      playlist = HTTP.get(playlist_url)
-      segments = parse_playlist(playlist)
-      segment_urls.concat(segments)
+    while seek_time < end_time
+      params[:seek] = seek_str
+      pre_playlist = HTTP.headers(headers).get(stream_info[:url], params:)
+      playlist_urls = parse_playlist(pre_playlist)
+
+      playlist_urls.each do |playlist_url|
+        playlist = HTTP.get(playlist_url)
+        segments = parse_playlist(playlist)
+        segment_urls.concat(segments)
+      end
+
+      seek_time, seek_str = seek(seek_time)
     end
 
-    seek_time, seek_str = seek(seek_time)
+    file_dir = "/tmp/#{lsid}"
+    Dir.mkdir(file_dir) unless Dir.exist?(file_dir)
+    segment_list_file_path = create_segment_list_file(segment_urls, file_dir)
+    segment_file_path_list = download_segments(segment_urls, file_dir)
+
+    raise 'Segment count mismatch' unless segment_urls.count == segment_file_path_list.count
+
+    output_file_name = "#{event['title']}_#{event['station_id']}_#{event['ft'][0...12]}.m4a"
+    output_file_path = "#{file_dir}/#{output_file_name}"
+
+    metadata_options = build_metadata_options(event['metadata'])
+    artwork_option = build_artwork_option(event['metadata'], file_dir)
+
+    ffmpeg_cmd = [
+      '/opt/bin/ffmpeg',
+      '-hide_banner',
+      '-y',
+      '-safe',
+      '0',
+      '-f',
+      'concat',
+      '-i',
+      segment_list_file_path
+    ]
+    ffmpeg_cmd.concat(artwork_option) if artwork_option
+    ffmpeg_cmd.concat(metadata_options)
+    ffmpeg_cmd.concat(['-c', 'copy', output_file_path])
+
+    _, stderr, status = Open3.capture3(*ffmpeg_cmd)
+    raise "FFmpeg failed: #{stderr}" unless status.success?
+
+    s3_file_path = upload_to_s3(output_file_path, output_file_name)
+
+    file_size = "#{(File.size(output_file_path).to_f / 1024 / 1024).round(2)} MB"
+    LOGGER.info("Download completed: #{s3_file_path} (#{file_size})")
+
+    fields = [
+      { name: 'File', value: s3_file_path, inline: false },
+      { name: 'Size', value: file_size, inline: true }
+    ]
+    send_notify(status: :ok, fields: fields)
+  ensure
+    FileUtils.rm_rf(file_dir) if file_dir && Dir.exist?(file_dir)
   end
-
-  file_dir = "/tmp/#{lsid}"
-  Dir.mkdir(file_dir) unless Dir.exist?(file_dir)
-  segment_list_file_path = create_segment_list_file(segment_urls, file_dir)
-  segment_file_path_list = download_segments(segment_urls, file_dir)
-
-  raise 'Segment count mismatch' unless segment_urls.count == segment_file_path_list.count
-
-  output_file_name = "#{event['title']}_#{event['station_id']}_#{event['ft'][0...12]}.m4a"
-  output_file_path = "#{file_dir}/#{output_file_name}"
-
-  metadata_options = build_metadata_options(event['metadata'])
-  artwork_option = build_artwork_option(event['metadata'], file_dir)
-
-  ffmpeg_cmd = [
-    '/opt/bin/ffmpeg',
-    '-hide_banner',
-    '-y',
-    '-safe',
-    '0',
-    '-f',
-    'concat',
-    '-i',
-    segment_list_file_path
-  ]
-  ffmpeg_cmd.concat(artwork_option) if artwork_option
-  ffmpeg_cmd.concat(metadata_options)
-  ffmpeg_cmd.concat(['-c', 'copy', output_file_path])
-
-  _, stderr, status = Open3.capture3(*ffmpeg_cmd)
-  raise "FFmpeg failed: #{stderr}" unless status.success?
-
-  s3_file_path = upload_to_s3(output_file_path, output_file_name)
-
-  file_size = "#{(File.size(output_file_path).to_f / 1024 / 1024).round(2)} MB"
-  LOGGER.info("Download completed: #{s3_file_path} (#{file_size})")
-
-  fields = [
-    { name: 'File', value: s3_file_path, inline: false },
-    { name: 'Size', value: file_size, inline: true }
-  ]
-  send_notify(status: :ok, fields: fields)
 end
 
 def lambda_handler(event:, context:)
