@@ -198,7 +198,7 @@ def send_notify(status: nil, description:)
     when :error
       'リクエストエラー'
     else
-      nil
+      '検索テスト'
     end
 
   message = {
@@ -221,6 +221,9 @@ def main(event, context)
   is_today = event.key?('today') ? event['today'] : true
   program_date = prev_date_of_week(event['week'].to_sym, include_today: is_today)
 
+  # 検索テストモード（ダウンロード実行しない）
+  is_test = event.key?('test') ? event['test'] : false
+
   case mode
   when :radiko
     xml = radiko_program_xml(program_date, event['station_id'])
@@ -241,6 +244,15 @@ def main(event, context)
     download_func_name = ENV['RADIRU_DL_FUNC_NAME']
   else
     programs = []
+  end
+
+  # 検索テストモード: 検索結果を通知して処理終了
+  if is_test
+    send_notify(
+      description:
+        "Event\n```json\n#{JSON.pretty_generate(event, ascii_only: false)}\n```\n\nResults\n```json\n#{JSON.pretty_generate(programs, ascii_only: false)}\n```"
+    )
+    return
   end
 
   if programs.empty?
