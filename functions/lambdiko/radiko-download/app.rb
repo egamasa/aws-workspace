@@ -45,9 +45,11 @@ def download_file(url, file_path)
   rescue StandardError => e
     retry_count += 1
     if retry_count <= RETRY_LIMIT
+      LOGGER.warn("Download retry (#{retry_count}/#{RETRY_LIMIT}): #{e.message} - #{url}")
       sleep 1
       retry
     else
+      LOGGER.error("Download failed: #{e.message} - #{url}")
       return false
     end
   end
@@ -68,21 +70,27 @@ def create_segment_list_file(urls, file_dir)
 end
 
 def download_segments(urls, file_dir)
-  semaphore = Mutex.new
-  threads = []
-  segment_file_path_list = []
+  queue = Queue.new
+  segment_file_path_list = Array.new(urls.size)
 
-  urls.each_with_index do |url, index|
-    file_name = File.basename(url)
-    file_path = "#{file_dir}/#{file_name}"
+  urls.each_with_index { |url, index| queue << [url, index] }
 
-    threads << Thread.new do
-      result = download_file(url, file_path)
-      semaphore.synchronize { segment_file_path_list[index] = result ? file_path : nil }
+  threads =
+    THREAD_LIMIT.times.map do
+      Thread.new do
+        loop do
+          begin
+            url, index = queue.pop(true)
+            file_name = File.basename(url)
+            file_path = "#{file_dir}/#{file_name}"
+            result = download_file(url, file_path)
+            segment_file_path_list[index] = result ? file_path : nil
+          rescue ThreadError
+            break
+          end
+        end
+      end
     end
-
-    threads.shift.join while threads.size >= THREAD_LIMIT
-  end
 
   threads.each(&:join)
 
@@ -96,7 +104,20 @@ def build_metadata_options(metadata)
     artist: metadata['artist'],
     album: metadata['album'],
     album_artist: metadata['album_artist'],
-    date: metadata['date'] ? Time.parse(metadata['date']).strftime('%Y-%m-%d') : nil,
+    date:
+      (
+        if metadata['date']
+          (
+            begin
+              Time.parse(metadata['date']).strftime('%Y-%m-%d')
+            rescue StandardError
+              nil
+            end
+          )
+        else
+          nil
+        end
+      ),
     comment: metadata['comment']
   }.each do |key, value|
     next unless value && !value.empty?
@@ -183,7 +204,7 @@ def main(event, context)
   end
 
   file_dir = "/tmp/#{lsid}"
-  Dir.mkdir(file_dir)
+  Dir.mkdir(file_dir) unless Dir.exist?(file_dir)
   segment_list_file_path = create_segment_list_file(segment_urls, file_dir)
   segment_file_path_list = download_segments(segment_urls, file_dir)
 
@@ -194,7 +215,7 @@ def main(event, context)
     metadata_options = build_metadata_options(event['metadata'])
 
     artwork_option = nil
-    unless event['metadata']['img'].empty?
+    unless event['metadata']&.dig('img')&.empty?
       artwork_path = "#{file_dir}/#{File.basename(event['metadata']['img'])}"
       download_file(event['metadata']['img'], artwork_path)
       artwork_option = [
@@ -227,48 +248,29 @@ def main(event, context)
     ffmpeg_cmd.concat(metadata_options)
     ffmpeg_cmd.concat(['-c', 'copy', output_file_path])
 
-    begin
-      _, stderr, status = Open3.capture3(*ffmpeg_cmd)
+    _, stderr, status = Open3.capture3(*ffmpeg_cmd)
 
-      unless status.success?
-        LOGGER.error("FFmpeg failed: #{stderr}")
-        send_notify(status: :error, description: "FFmpeg: #{output_file_name}\n```\n#{stderr}\n```")
-        return
-      end
-    rescue => e
-      LOGGER.error("FFmpeg Error: #{e.message}")
-      send_notify(
-        status: :error,
-        description: "FFmpeg: #{output_file_name}\n```\n#{e.message}\n```"
-      )
-      return
-    end
+    raise "FFmpeg failed: #{stderr}" unless status.success?
   else
-    LOGGER.error('Failed to download segments')
-    send_notify(status: :error, description: "Download segments: #{output_file_name}")
-    return
+    raise 'Segment count mismatch'
   end
 
-  begin
-    s3_file_path = upload_to_s3(output_file_path, output_file_name)
+  s3_file_path = upload_to_s3(output_file_path, output_file_name)
 
-    file_size = "#{(File.size(output_file_path).to_f / 1024 / 1024).round(2)} MB"
-    LOGGER.info("Download completed: #{s3_file_path} (#{file_size})")
+  file_size = "#{(File.size(output_file_path).to_f / 1024 / 1024).round(2)} MB"
+  LOGGER.info("Download completed: #{s3_file_path} (#{file_size})")
 
-    fields = [
-      { name: 'File', value: s3_file_path, inline: false },
-      { name: 'Size', value: file_size, inline: true }
-    ]
-    send_notify(status: :ok, fields: fields)
-  rescue => e
-    LOGGER.error("Failed to upload to S3: #{output_file_path} - #{e.message}")
-    send_notify(
-      status: :error,
-      description: "S3 Upload: #{output_file_name}\n```\n#{e.message}\n```"
-    )
-  end
+  fields = [
+    { name: 'File', value: s3_file_path, inline: false },
+    { name: 'Size', value: file_size, inline: true }
+  ]
+  send_notify(status: :ok, fields: fields)
 end
 
 def lambda_handler(event:, context:)
   main(event, context)
+rescue StandardError => e
+  LOGGER.error("Error [#{e.class}] #{e.message}")
+  LOGGER.error(e.backtrace.first(5).join("\n"))
+  send_notify(status: :error, description: "[#{e.class}]\n```\n#{e.message}\n```")
 end
