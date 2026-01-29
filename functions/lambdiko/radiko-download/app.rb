@@ -112,7 +112,10 @@ def build_artwork_option(metadata, file_dir)
   return nil if img_url.nil? || img_url.empty?
 
   artwork_path = "#{file_dir}/#{File.basename(img_url)}"
-  download_file(img_url, artwork_path)
+  unless download_file(img_url, artwork_path)
+    LOGGER.warn("Artwork download failed: #{img_url}")
+    return nil
+  end
 
   [
     '-i',
