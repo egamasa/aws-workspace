@@ -13,7 +13,7 @@ WDAY_LIST = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }.freeze
 
 # 直近の指定曜日の日付を算出
 def prev_date_of_week(week, include_today: true)
-  wday = WDAY_LIST[week]
+  wday = WDAY_LIST.fetch(week)
   base_date = Date.today - (include_today ? 0 : 1)
   base_date_wday = base_date.wday
   days_ago = (base_date_wday - wday) % 7
@@ -286,4 +286,8 @@ end
 
 def lambda_handler(event:, context:)
   main(event, context)
+rescue StandardError => e
+  LOGGER.error("Error [#{e.class}] #{e.message}")
+  LOGGER.error(e.backtrace.first(5).join("\n"))
+  send_notify(status: :error, description: "```\n#{e.message}\n```")
 end
