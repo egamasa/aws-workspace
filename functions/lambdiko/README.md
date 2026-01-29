@@ -1,6 +1,6 @@
-# lambda-radiko
+# Lambdiko（らむじこ）
 
-IPサイマル配信 ラジオ番組自動ダウンロードスクリプト for AWS Lambda
+IPサイマルラジオ ダウンロードツール for AWS Lambda
 
 ## 対応サービス
 
@@ -9,12 +9,14 @@ IPサイマル配信 ラジオ番組自動ダウンロードスクリプト for 
 
 ## 動作環境
 
-- AWS Lambda (arm64)
-- Ruby 3.3
+- AWS Lambda
+  - arm64 アーキテクチャ
+  - Ruby 3.3 ランタイム
 
 ## デプロイ
 
 ### FFmpeg バイナリの入手
+
 ビルド実行前に、 https://www.johnvansickle.com/ffmpeg/ より **ARM64** 版の静的ビルドバイナリをダウンロードし、`layers/bin` ディレクトリ内に ffmpeg を配置する。
 
 ### デプロイ
@@ -29,4 +31,4 @@ sam deploy --guided
 - BucketName
   - 音声ファイルの保存先 S3 バケット名
 - LogGroupName
-  - ログの出力先ロググループ名
+  - ログ出力先の CloudWatch ロググループ名

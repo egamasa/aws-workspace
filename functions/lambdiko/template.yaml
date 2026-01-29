@@ -1,9 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  SAM Template for lambda-radiko
-
-  lambda-radiko: IP Simulcast Radio Download Tool for AWS Lambda
+  Lambdiko - IP simulcast radio download tools for AWS Lambda
 
 Parameters:
   BucketName:
@@ -11,24 +9,27 @@ Parameters:
     Default: radiko-download
   LogGroupName:
     Type: String
-    Default: /aws/lambda/lambda-radiko
+    Default: /aws/lambda/lambdiko
+  NotifySnsTopicArn:
+    Type: String
 
 Globals:
   Function:
-    Runtime: ruby3.3
-    Architectures:
-      - arm64
+    Runtime: ruby3.4
+    Architectures: [arm64]
+    Handler: app.lambda_handler
     LoggingConfig:
-      LogFormat: JSON
       LogGroup: !Ref LogGroupName
+    Environment:
+      Variables:
+        SNS_TOPIC_ARN: !Ref NotifySnsTopicArn
 
 Resources:
   RadikoDownloadFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: RadikoDownload
-      CodeUri: radiko_download/
-      Handler: app.lambda_handler
+      FunctionName: lambdiko-radiko-download
+      CodeUri: radiko-download/
       MemorySize: 512
       Timeout: 600
       Layers:
@@ -39,13 +40,17 @@ Resources:
       Policies:
         - S3WritePolicy:
             BucketName: !Ref BucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref NotifySnsTopicArn
 
   RadiruDownloadFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: RadiruDownload
-      CodeUri: radiru_download/
-      Handler: app.lambda_handler
+      FunctionName: lambdiko-radiru-download
+      CodeUri: radiru-download/
       MemorySize: 512
       Timeout: 600
       Layers:
@@ -56,13 +61,17 @@ Resources:
       Policies:
         - S3WritePolicy:
             BucketName: !Ref BucketName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref NotifySnsTopicArn
 
-  RadioProgramSearchFunction:
+  ProgramSearchFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: RadioProgramSearch
-      CodeUri: radio_program_search/
-      Handler: app.lambda_handler
+      FunctionName: lambdiko-program-search
+      CodeUri: program-search/
       MemorySize: 128
       Timeout: 60
       Environment:
@@ -74,20 +83,20 @@ Resources:
             FunctionName: !Ref RadikoDownloadFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref RadiruDownloadFunction
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref NotifySnsTopicArn
 
   FFmpegLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: FFmpegLayer
+      LayerName: ffmpeg-layer
       Description: FFmpeg binary
       ContentUri: layers/
       CompatibleRuntimes:
-        - ruby3.3
-
-  RadikoDownloadBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref BucketName
+        - ruby3.4
 
 Outputs:
   RadikoDownloadFunction:
@@ -98,10 +107,6 @@ Outputs:
     Description: RadiruDownload Lambda Function ARN
     Value: !GetAtt RadiruDownloadFunction.Arn
 
-  RadioProgramSearchFunction:
-    Description: RadioProgramSearch Lambda Function ARN
-    Value: !GetAtt RadioProgramSearchFunction.Arn
-
-  RadioDownloadBucket:
-    Description: RadioDownload S3 Bucket ARN
-    Value: !GetAtt RadikoDownloadBucket.Arn
+  ProgramSearchFunction:
+    Description: ProgramSearch Lambda Function ARN
+    Value: !GetAtt ProgramSearchFunction.Arn
