@@ -245,6 +245,13 @@ def main(event, context)
 
     fields = [
       { name: 'File', value: s3_file_path, inline: false },
+      { name: 'Title', value: event['metadata']['title'], inline: false },
+      {
+        name: 'On Air',
+        value:
+          "#{parse_metadata_date(event['metadata']['date'])} #{event['ft'][8..9]}:#{event['ft'][10..11]}-#{event['to'][8..9]}:#{event['to'][10..11]}",
+        inline: true
+      },
       { name: 'Size', value: file_size, inline: true }
     ]
     send_notify(status: :ok, fields: fields)

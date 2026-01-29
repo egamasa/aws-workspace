@@ -236,7 +236,11 @@ def main(event, context)
     LOGGER.info(
       "Download requested -> #{download_func_name}: #{JSON.generate(program, ascii_only: false)}"
     )
-    send_notify(status: :info, description: program[:title])
+    send_notify(
+      status: :info,
+      description:
+        "#{program[:metadata][:title]}\n#{program[:station_id]} / #{program[:ft]}-#{program[:to]}"
+    )
   end
 end
 
