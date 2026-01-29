@@ -239,6 +239,6 @@ def lambda_handler(event:, context:)
   main(event, context)
 rescue StandardError => e
   LOGGER.error("Error [#{e.class}] #{e.message}")
-  LOGGER.error(e.backtrace.first(5).join("\n"))
-  send_notify(status: :error, description: "[#{e.class}]\n```\n#{e.message}\n```")
+  LOGGER.error(e.backtrace.join("\n"))
+  send_notify(status: :error, description: "#{e.class}\n```\n#{e.message}\n```")
 end
