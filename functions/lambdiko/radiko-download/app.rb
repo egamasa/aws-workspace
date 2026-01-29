@@ -81,21 +81,15 @@ def download_segments(urls, file_dir)
   return segment_file_path_list.compact
 end
 
+def parse_metadata_date(date_str)
+  return nil if date_str.nil? || date_str.empty?
+  Time.parse(date_str).strftime('%Y-%m-%d')
+rescue StandardError
+  nil
+end
+
 def build_metadata_options(metadata)
-  date =
-    (
-      if metadata['date']
-        (
-          begin
-            Time.parse(metadata['date']).strftime('%Y-%m-%d')
-          rescue StandardError
-            nil
-          end
-        )
-      else
-        nil
-      end
-    )
+  date = parse_metadata_date(metadata['date'])
 
   {
     title: metadata['title'],
