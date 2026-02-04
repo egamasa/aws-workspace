@@ -66,6 +66,8 @@ def upload_to_s3(file_path, file_name)
   File.open(file_path, 'rb') do |file|
     s3_client.put_object(bucket: s3_bucket, key: file_name, body: file)
   end
+
+  "s3://#{s3_bucket}/#{file_name}"
 end
 
 def sns_publish(message)
@@ -73,29 +75,12 @@ def sns_publish(message)
   sns.publish(topic_arn: ENV['SNS_TOPIC_ARN'], message: message.to_json)
 end
 
-def send_notify(status:, url: nil, file_name: nil, item_title: nil, error_msg: nil)
-  description = status == :ok ? 'ダウンロード完了' : 'ダウンロードエラー'
-
-  fields =
-    if status == :ok
-      [
-        { name: 'File', value: file_name, inline: false },
-        { name: 'Episode', value: item_title, inline: false }
-      ]
-    elsif url
-      [
-        { name: 'URL', value: url, inline: false },
-        { name: 'Error', value: error_msg, inline: false }
-      ]
-    else
-      [
-        { name: 'File', value: file_name, inline: false },
-        { name: 'Error', value: error_msg, inline: false }
-      ]
-    end
+def send_notify(status:, description:, fields:)
+  title = status == :ok ? 'ダウンロード完了' : 'ダウンロードエラー'
 
   message = {
-    title: 'Podcast Download',
+    service: 'Podcast Download',
+    title:,
     status: status.to_s.upcase,
     description:,
     fields:,
@@ -111,8 +96,13 @@ def main(event, context)
     rss_xml = URI.open(rss_url).read
     rss = RSS::Parser.parse(rss_xml, false)
   rescue => e
-    LOGGER.error("Failed to fetch or parse RSS: #{e.message}")
-    send_notify(status: :error, url: rss_url, error_msg: e.message) if ENV['SNS_TOPIC_ARN']
+    LOGGER.error("Failed to fetch or parse RSS: #{e.message} - #{rss_url}")
+
+    if ENV['SNS_TOPIC_ARN']
+      fields = [{ name: 'Error', value: e.message, inline: false }]
+      send_notify(status: :error, description: rss_url, fields: fields)
+    end
+
     return
   end
 
@@ -137,8 +127,13 @@ def main(event, context)
     begin
       download_file(audio_url, file_path)
     rescue => e
-      LOGGER.error("Failed to download: #{e.message}")
-      send_notify(status: :error, url: audio_url, error_msg: e.message) if ENV['SNS_TOPIC_ARN']
+      LOGGER.error("Failed to download: #{e.message} - #{audio_url}")
+
+      if ENV['SNS_TOPIC_ARN']
+        fields = [{ name: 'Error', value: e.message, inline: false }]
+        send_notify(status: :error, description: audio_url, fields: fields)
+      end
+
       next
     end
 
@@ -151,15 +146,25 @@ def main(event, context)
     end
 
     begin
-      upload_to_s3(file_path, file_name)
+      s3_file_path = upload_to_s3(file_path, file_name)
 
-      LOGGER.info("Download completed: #{file_name}")
+      file_size = "#{(File.size(file_path).to_f / 1024 / 1024).round(2)} MB"
+      LOGGER.info("Download completed: #{file_name} (#{file_size})")
+
       if ENV['SNS_TOPIC_ARN']
-        send_notify(status: :ok, file_name:, item_title: zenkaku_to_hankaku(item.title))
+        fields = [
+          { name: 'Episode', value: zenkaku_to_hankaku(item.title), inline: false },
+          { name: 'Size', value: file_size, inline: true }
+        ]
+        send_notify(status: :ok, description: s3_file_path, fields: fields)
       end
     rescue => e
       LOGGER.error("Failed to upload to S3: #{e.message}")
-      send_notify(status: :error, file_name:, error_msg: e.message) if ENV['SNS_TOPIC_ARN']
+
+      if ENV['SNS_TOPIC_ARN']
+        fields = [{ name: 'Error', value: e.message, inline: false }]
+        send_notify(status: :error, description: file_name, fields: fields)
+      end
     ensure
       File.delete(file_path) if File.exist?(file_path)
     end
