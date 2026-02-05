@@ -76,6 +76,8 @@ def sns_publish(message)
 end
 
 def send_notify(status:, description:, fields:)
+  return unless ENV['SNS_TOPIC_ARN']
+
   title = status == :ok ? 'ダウンロード完了' : 'ダウンロードエラー'
 
   message = {
@@ -98,10 +100,8 @@ def main(event, context)
   rescue => e
     LOGGER.error("Failed to fetch or parse RSS: #{e.message} - #{rss_url}")
 
-    if ENV['SNS_TOPIC_ARN']
-      fields = [{ name: 'Error', value: e.message, inline: false }]
-      send_notify(status: :error, description: rss_url, fields: fields)
-    end
+    fields = [{ name: 'Error', value: e.message, inline: false }]
+    send_notify(status: :error, description: rss_url, fields: fields)
 
     return
   end
@@ -114,9 +114,20 @@ def main(event, context)
     next unless item.enclosure
 
     audio_url = item.enclosure.url
-    audio_ext = get_file_ext(audio_url)
 
-    item_date = utc_to_jst(item.pubDate)
+    begin
+      audio_ext = get_file_ext(audio_url)
+    rescue => e
+      LOGGER.error("Invalid URL: #{e.message} - #{audio_url}")
+
+      fields = [{ name: 'Error', value: e.message, inline: false }]
+      send_notify(status: :error, description: audio_url, fields: fields)
+
+      next
+    end
+
+    item_date =
+      item.pubDate ? utc_to_jst(item.pubDate) : Time.now.getlocal('+09:00').to_date.to_time
 
     file_dir = "/tmp/#{SecureRandom.uuid}"
     Dir.mkdir(file_dir)
@@ -129,10 +140,8 @@ def main(event, context)
     rescue => e
       LOGGER.error("Failed to download: #{e.message} - #{audio_url}")
 
-      if ENV['SNS_TOPIC_ARN']
-        fields = [{ name: 'Error', value: e.message, inline: false }]
-        send_notify(status: :error, description: audio_url, fields: fields)
-      end
+      fields = [{ name: 'Error', value: e.message, inline: false }]
+      send_notify(status: :error, description: audio_url, fields: fields)
 
       next
     end
@@ -151,20 +160,16 @@ def main(event, context)
       file_size = "#{(File.size(file_path).to_f / 1024 / 1024).round(2)} MB"
       LOGGER.info("Download completed: #{file_name} (#{file_size})")
 
-      if ENV['SNS_TOPIC_ARN']
-        fields = [
-          { name: 'Episode', value: zenkaku_to_hankaku(item.title), inline: false },
-          { name: 'Size', value: file_size, inline: true }
-        ]
-        send_notify(status: :ok, description: s3_file_path, fields: fields)
-      end
+      fields = [
+        { name: 'Episode', value: zenkaku_to_hankaku(item.title), inline: false },
+        { name: 'Size', value: file_size, inline: true }
+      ]
+      send_notify(status: :ok, description: s3_file_path, fields: fields)
     rescue => e
       LOGGER.error("Failed to upload to S3: #{e.message}")
 
-      if ENV['SNS_TOPIC_ARN']
-        fields = [{ name: 'Error', value: e.message, inline: false }]
-        send_notify(status: :error, description: file_name, fields: fields)
-      end
+      fields = [{ name: 'Error', value: e.message, inline: false }]
+      send_notify(status: :error, description: file_name, fields: fields)
     ensure
       File.delete(file_path) if File.exist?(file_path)
     end
