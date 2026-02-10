@@ -12,6 +12,7 @@ IPサイマルラジオ ダウンロードツール for AWS Lambda
 - AWS Lambda
   - arm64 アーキテクチャ
   - Ruby 3.4 ランタイム
+- AWS SAM CLI（デプロイ時）
 
 ## デプロイ
 
@@ -69,10 +70,85 @@ sam deploy --guided
 - `test` テストモード（検索結果のみ通知、ダウンロード実行しない）
   - デフォルト： `false`
 
+#### 実行例
+
+- 検索条件をJSONファイルで定義
+
+  ```json
+  // event.json
+  {
+    "title": "NISSAN あ、安部礼司 ～BEYOND THE AVERAGE～",
+    "station_id": "FMT",
+    "week": "sun",
+    "target": "title",
+    "keyword": "安部礼司",
+    "today": true
+  }
+  ```
+
+- AWS CLI で手動実行
+
+  ```bash
+  aws lambda invoke \
+    --function-name lambdiko-program-search \
+    --payload file://event.json \
+    output.json
+  ```
+
+- EventBridge でスケジュールを定義し、定期実行も可能
+
 ### lambdiko-radiko-download
 
-radiko タイムフリー番組をダウンロードし、S3へアップロード。
+radiko タイムフリー番組をダウンロードし、S3へアップロードする。  
+通常は `lambdiko-program-search` から渡されるイベントパラメータで実行するが、単独で手動実行も可能。
+
+#### イベントパラメータ
+
+- `station_id` 放送局ID
+- `ft` 開始時刻 ( `YYYYMMDDHHmmss` )
+- `to` 終了時刻 ( `YYYYMMDDHHmmss` )
+  - `ft` および `to` は、番組の実際の開始・終了時刻に関わらず任意の値を指定可能。
+    - 連続する番組を1ファイルで保存したい場合
+    - 番組内のミニコーナー部分のみを保存したい場合　など
+- `title` カスタムタイトル（ファイル名に使用）
+- `metadata` ID3タグ メタデータ
+  - `title`
+  - `artist`
+  - `album`
+  - `album_artist`
+  - `date`
+  - `comment`
+  - `img` （URLを指定）
+
+#### 実行例
+
+[event.json の例](./events/radiko-download.json)
 
 ### lambdiko-radiru-download
 
-らじる★らじる 聴き逃し番組をダウンロードし、S3へアップロード。
+らじる★らじる 聴き逃し番組をダウンロードし、S3へアップロードする。  
+通常は `lambdiko-program-search` から渡されるイベントパラメータで実行するが、単独で手動実行も可能。
+
+#### イベントパラメータ
+
+- `station_id` 放送局ID
+  - `NHK-R1`, `NHK-R2`, `NHK-FM`, `NHK`
+  - ファイル名にのみ使用
+- `ft` 開始時刻 ( `YYYYMMDDHHmmss` )
+- `to` 終了時刻 ( `YYYYMMDDHHmmss` )
+  - ファイル名にのみ使用
+  - らじる★らじる では番組単位でストリーミングURLが提供されるため、任意の開始～終了時刻間のダウンロードは不可。
+- `title` カスタムタイトル（ファイル名に使用）
+- `stream_url` ストリーミングURL
+- `metadata` ID3タグ メタデータ
+  - `title`
+  - `artist`
+  - `album`
+  - `album_artist`
+  - `date`
+  - `comment`
+  - `img` （URLを指定）
+
+#### 実行例
+
+[event.json の例](./events/radiru-download.json)
