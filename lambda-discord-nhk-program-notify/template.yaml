@@ -1,6 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Notify NHK programs info to Discord channel
+Description: >
+  Lambda: Notify NHK programs info to Discord channel
 
 Parameters:
   ApiKeyParameterName:
@@ -18,13 +19,13 @@ Resources:
   NotifyFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: nhk-program-notify
       CodeUri: function/
       Handler: app.lambda_handler
       Runtime: ruby3.3
+      Architectures: [arm64]
       Timeout: 30
       MemorySize: 128
-      Architectures:
-        - arm64
       Layers:
         - Ref: LambdaExtensionSsmLayerArn
       Environment:

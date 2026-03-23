@@ -1,4 +1,4 @@
-# lambda-discord-nhk-program-notify
+# nhk-program-notify
 
 **NHK番組情報 通知スクリプト**
 
