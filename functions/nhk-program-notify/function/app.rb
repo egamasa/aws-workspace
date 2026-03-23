@@ -4,8 +4,10 @@ require 'json'
 require 'net/http'
 require_relative 'config/constants'
 
-API_BASE_URL_GENRE = 'https://api.nhk.or.jp/v2/pg/genre/'
-API_BASE_URL_LIST = 'https://api.nhk.or.jp/v2/pg/list/'
+API_BASE_URL_TV_GENRE = 'https://program-api.nhk.jp/v3/papiPgGenreTv'
+API_BASE_URL_TV_LIST = 'https://program-api.nhk.jp/v3/papiPgDateTv'
+API_BASE_URL_RADIO_GENRE = 'https://program-api.nhk.jp/v3/papiPgGenreRadio'
+API_BASE_URL_RADIO_LIST = 'https://program-api.nhk.jp/v3/papiPgDateRadio'
 EXCLUDE_BS8K_PROGRAMS = (ENV['EXCLUDE_BS8K_PROGRAMS'] == 'True')
 
 def get_parameter(mode)
@@ -38,20 +40,92 @@ def get_webhook_url
   @webhook_url = get_parameter(:webhook_url)
 end
 
+def is_tv_service?(service_id)
+  %w[g g1 g2 e e1 e3 s s1 s2 s5 s6 tv].include?(service_id)
+end
+
+def is_radio_service?(service_id)
+  %w[r1 r2 r3 radio].include?(service_id)
+end
+
 def fetch_programs(date, service_id, area_id, genre_id = nil)
-  if genre_id
-    # ジャンル検索
-    url =
-      "#{API_BASE_URL_GENRE}#{area_id}/#{service_id}/#{genre_id}/#{date.strftime('%Y-%m-%d')}.json?key=#{@api_key}"
+  # Determine if service is TV or Radio
+  if is_tv_service?(service_id)
+    base_url_genre = API_BASE_URL_TV_GENRE
+    base_url_list = API_BASE_URL_TV_LIST
+  elsif is_radio_service?(service_id)
+    base_url_genre = API_BASE_URL_RADIO_GENRE
+    base_url_list = API_BASE_URL_RADIO_LIST
   else
-    # キーワード検索
+    return []
+  end
+
+  date_str = date.strftime('%Y-%m-%d')
+
+  if genre_id
+    # ジャンル検索 (v3 query parameter format)
     url =
-      "#{API_BASE_URL_LIST}#{area_id}/#{service_id}/#{date.strftime('%Y-%m-%d')}.json?key=#{@api_key}"
+      "#{base_url_genre}?service=#{service_id}&area=#{area_id}&genre=#{genre_id}&date=#{date_str}&key=#{@api_key}"
+  else
+    # キーワード検索 (v3 query parameter format)
+    url = "#{base_url_list}?service=#{service_id}&area=#{area_id}&date=#{date_str}&key=#{@api_key}"
   end
 
   response = Net::HTTP.get_response(URI(url))
 
-  JSON.parse(response.body) if response.is_a?(Net::HTTPSuccess)
+  return [] unless response.is_a?(Net::HTTPSuccess)
+
+  # Parse v3 response and normalize to internal format
+  raw_data = JSON.parse(response.body)
+  normalize_v3_response(raw_data, service_id)
+end
+
+def normalize_v3_response(raw_data, service_id)
+  if service_id == 'tv'
+    target_service_id_list = %w[g1 g2 e1 e3 s1 s2 s5 s6]
+  elsif service_id == 'radio'
+    target_service_id_list = %w[r1 r2 r3]
+  else
+    target_service_id_list = [service_id]
+  end
+
+  programs = { 'list' => {} }
+  target_service_id_list.each do |target_service_id|
+    # v3 response structure: { "service_id": { "publication": [...], "publishedOn": [...] } }
+    next unless raw_data[target_service_id] && raw_data[target_service_id]['publication']
+
+    # Get service and area info from publishedOn
+    published_on = raw_data[target_service_id]['publishedOn']&.first || {}
+    service_info = published_on['identifierGroup'] || {}
+
+    # Normalize each program to internal format
+    normalized_programs =
+      raw_data[target_service_id]['publication'].map do |program|
+        {
+          'id' => program.dig('identifierGroup', 'broadcastEventId'),
+          'event_id' => program.dig('identifierGroup', 'eventId'),
+          'start_time' => program['startDate'],
+          'end_time' => program['endDate'],
+          'title' => program['name'],
+          'subtitle' => program.dig('identifierGroup', 'tvEpisodeName'),
+          'content' => program['description'],
+          'service' => {
+            'id' => program.dig('identifierGroup', 'serviceId') || service_info['serviceId'],
+            'name' => program.dig('identifierGroup', 'serviceName') || service_info['serviceName']
+          },
+          'area' => {
+            'id' => program.dig('identifierGroup', 'areaId') || service_info['areaId'],
+            'name' => program.dig('identifierGroup', 'areaName') || service_info['areaName']
+          },
+          'genres' => (program.dig('identifierGroup', 'genre') || []).map { |g| g['id'] }
+        }
+      end
+
+    # Return in v2-compatible format for backward compatibility
+    programs['list'][target_service_id] = normalized_programs
+  end
+
+  return programs
 end
 
 def search_programs(programs, params)

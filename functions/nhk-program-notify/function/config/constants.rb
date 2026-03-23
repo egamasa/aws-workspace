@@ -57,25 +57,22 @@ module Constants
   }.freeze
 
   SERVICE = {
-    g1: 'NHK 総合',
+    g: 'NHK総合',
+    g1: 'NHK 総合1',
     g2: 'NHK 総合2',
-    e1: 'NHK Eテレ',
-    e2: 'NHK Eテレ2',
+    e: 'NHK Eテレ',
+    e1: 'NHK Eテレ1',
     e3: 'NHK Eテレ3',
-    e4: 'NHK ワンセグ2',
-    s1: 'NHK BS',
+    s: 'NHK BS',
+    s1: 'NHK BS (101ch)',
     s2: 'NHK BS (102ch)',
     s5: 'NHK BSプレミアム4K',
     s6: 'NHK BS8K',
+    tv: 'テレビ全て',
     r1: 'NHK ラジオ第1',
     r2: 'NHK ラジオ第2',
     r3: 'NHK-FM',
-    n1: 'NHK ネットラジオ第1',
-    n2: 'NHK ネットラジオ第2',
-    n3: 'NHK ネットラジオFM',
-    tv: 'テレビ全て',
-    radio: 'ラジオ全て',
-    netradio: 'ネットラジオ全て'
+    radio: 'ラジオ全て'
   }.freeze
 
   GENRE = {
