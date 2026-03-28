@@ -6,10 +6,6 @@
 #
 # Usage: ./s3-delete.ps1
 #
-# 削除対象バケット:
-#   radiko-download
-#   podcast-dl
-#
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -19,7 +15,7 @@ function ok($msg)    { Write-Host "✔ $msg" -ForegroundColor Green }
 function warn($msg)  { Write-Host "⚠ $msg" -ForegroundColor Yellow }
 function err($msg)   { Write-Host "✖ $msg" -ForegroundColor Red }
 
-$Buckets = @("radiko-download", "podcast-dl")
+$Buckets = @("your-radiko-bucket-name", "your-podcast-bucket-name")
 
 # SSOログインチェック
 info "SSOログイン確認中..."
