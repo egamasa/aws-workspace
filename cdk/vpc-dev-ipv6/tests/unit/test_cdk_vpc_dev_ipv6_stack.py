@@ -1,7 +1,7 @@
 import aws_cdk as core
 import aws_cdk.assertions as assertions
 
-from cdk_vpc_dev_ipv6.cdk_vpc_dev_ipv6_stack import CdkVpcDevIpv6Stack
+from vpc_dev_ipv6.vpc_dev_ipv6_stack import CdkVpcDevIpv6Stack
 
 # example tests. To run these tests, uncomment this file along with the example
 # resource in cdk_vpc_dev_ipv6/cdk_vpc_dev_ipv6_stack.py

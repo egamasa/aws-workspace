@@ -3,7 +3,7 @@ import os
 import yaml
 import aws_cdk as cdk
 
-from cdk_vpc_dev_ipv6.cdk_vpc_dev_ipv6_stack import CdkVpcDevIpv6Stack
+from vpc_dev_ipv6.vpc_dev_ipv6_stack import CdkVpcDevIpv6Stack
 
 
 app = cdk.App()
