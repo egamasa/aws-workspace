@@ -101,6 +101,8 @@ Resources:
       CodeUri: program-search/
       MemorySize: 128
       Timeout: 60
+      Layers:
+        - !Ref LambdikoCoreLayer
       Environment:
         Variables:
           RADIKO_DL_FUNC_NAME: !GetAtt RadikoDownloadFunction.Arn
