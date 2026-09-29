@@ -10,6 +10,7 @@ require 'net/http'
 require 'rexml/document'
 require 'time'
 require 'uri'
+require 'lambdiko/common'
 require 'lambdiko/notify'
 
 LOGGER = Logger.new($stdout)
@@ -32,14 +33,6 @@ def prev_date_of_week(week, include_today: true)
   days_ago = (base_date.wday - wday) % 7
 
   base_date - days_ago
-end
-
-def remove_html_tags(text)
-  text.to_s.gsub(%r{</?[^>]+?>}, '').gsub(/\s+/, ' ').strip
-end
-
-def zenkaku_to_hankaku(text)
-  text.to_s.tr('Ａ-Ｚａ-ｚ０-９　', 'A-Za-z0-9 ')
 end
 
 def http_get_xml(url)

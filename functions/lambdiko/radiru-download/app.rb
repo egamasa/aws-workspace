@@ -8,6 +8,7 @@ require 'json'
 require 'logger'
 require 'securerandom'
 require 'time'
+require 'lambdiko/datetime'
 require 'lambdiko/download'
 require 'lambdiko/ffmpeg'
 require 'lambdiko/hls'
@@ -18,34 +19,8 @@ require 'lambdiko/s3'
 LOGGER = Logger.new($stdout)
 RETRY_LIMIT = 3
 THREAD_LIMIT = 3
-WDAY_JA = %w[日 月 火 水 木 金 土].freeze
 # プレイリストに IV 指定がない場合の初期化ベクトル（従来実装の値を踏襲）
 DEFAULT_IV = '0000000000000000'
-
-def to_time(time_str)
-  Time.strptime(time_str, '%Y%m%d%H%M%S')
-end
-
-def sanitize_filename(filename)
-  filename.to_s.gsub(%r{[/\\:*?"<>|]}, '_')
-end
-
-def format_airtime(ft_str, to_str)
-  ft = to_time(ft_str)
-  to = to_time(to_str)
-
-  date = ft.to_date
-
-  ft_hh = ft.hour.to_s.rjust(2, '0')
-  ft_mm = ft.strftime('%M')
-  to_hh = to.hour.to_s.rjust(2, '0')
-  to_mm = to.strftime('%M')
-
-  {
-    file_name: "#{date.strftime('%Y%m%d')}#{ft_hh}#{ft_mm}",
-    notify: "#{date.strftime('%Y-%m-%d')}（#{WDAY_JA[date.wday]}）#{ft_hh}:#{ft_mm}-#{to_hh}:#{to_mm}"
-  }
-end
 
 def main(event, context)
   file_dir = nil

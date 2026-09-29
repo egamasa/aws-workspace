@@ -8,6 +8,7 @@ require 'json'
 require 'logger'
 require 'securerandom'
 require 'time'
+require 'lambdiko/datetime'
 require 'lambdiko/download'
 require 'lambdiko/ffmpeg'
 require 'lambdiko/hls'
@@ -20,51 +21,10 @@ LOGGER = Logger.new($stdout)
 RETRY_LIMIT = 3
 THREAD_LIMIT = 3
 SEEK_SEC = 300
-WDAY_JA = %w[日 月 火 水 木 金 土].freeze
-
-def to_time(time_str)
-  Time.strptime(time_str, '%Y%m%d%H%M%S')
-end
 
 def seek(seek_time, seek_sec = SEEK_SEC)
   sought_time = seek_time + seek_sec
   [sought_time, sought_time.strftime('%Y%m%d%H%M%S')]
-end
-
-def sanitize_filename(filename)
-  filename.to_s.gsub(%r{[/\\:*?"<>|]}, '_')
-end
-
-def format_airtime(ft_str, to_str)
-  ft = to_time(ft_str)
-  to = to_time(to_str)
-
-  date = ft.to_date
-  ft_hour = ft.hour
-  to_hour = to.hour
-
-  # 放送中に日付を跨ぐ番組
-  # 終了時刻のみ29時間制表記
-  to_hour += 24 if to.hour < ft.hour
-
-  # 深夜0〜4時台に開始する番組
-  if ft.hour < 5
-    # 放送日は前日
-    date -= 1
-    # 開始時刻・終了時刻を29時間制表記
-    ft_hour += 24
-    to_hour += 24
-  end
-
-  ft_hh = ft_hour.to_s.rjust(2, '0')
-  ft_mm = ft.strftime('%M')
-  to_hh = to_hour.to_s.rjust(2, '0')
-  to_mm = to.strftime('%M')
-
-  {
-    file_name: "#{date.strftime('%Y%m%d')}#{ft_hh}#{ft_mm}",
-    notify: "#{date.strftime('%Y-%m-%d')}（#{WDAY_JA[date.wday]}）#{ft_hh}:#{ft_mm}-#{to_hh}:#{to_mm}"
-  }
 end
 
 def main(event, context)
@@ -113,7 +73,7 @@ def main(event, context)
 
     raise 'Segment count mismatch' unless segment_urls.count == segment_file_path_list.count
 
-    airtime = format_airtime(event['ft'], event['to'])
+    airtime = format_airtime_radiko(event['ft'], event['to'])
 
     output_file_name =
       "#{sanitize_filename(event['title'])}_#{event['station_id']}_#{airtime[:file_name]}.m4a"
