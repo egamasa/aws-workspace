@@ -1,5 +1,5 @@
 unless File.exist?('/opt/ruby/lib/lambdiko')
-  $LOAD_PATH.unshift(File.expand_path('../../layers/ruby', __dir__))
+  $LOAD_PATH.unshift(File.expand_path('../layers/ruby', __dir__))
 end
 
 require 'aws-sdk-lambda'
