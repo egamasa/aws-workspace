@@ -16,9 +16,7 @@ require 'lambdiko/metadata'
 require 'lambdiko/notify'
 require 'lambdiko/s3'
 
-LOGGER = Logger.new($stdout)
-RETRY_LIMIT = 3
-THREAD_LIMIT = 3
+LOGGER = Logger.new($stdout) unless defined?(LOGGER)
 # プレイリストに IV 指定がない場合の初期化ベクトル（従来実装の値を踏襲）
 DEFAULT_IV = '0000000000000000'
 

@@ -1,20 +1,19 @@
 require 'http'
 require 'logger'
 require 'uri'
+require 'lambdiko/config'
 
 # ダウンロード処理
 # http gem は各関数の Gemfile で導入する
 
 LOGGER = Logger.new($stdout) unless defined?(LOGGER)
-DOWNLOAD_RETRY_LIMIT = 3
-DOWNLOAD_THREAD_LIMIT = 3
 
 # HTTP GET（リトライあり）
 # ブロックを渡した場合はレスポンスボディを渡して評価し、その戻り値を返す
 # ブロック内で例外が発生した場合もリトライ対象とする
 # リトライ上限に達した場合は nil を返す
 def fetch_with_retry(url)
-  DOWNLOAD_RETRY_LIMIT.times do |attempt|
+  Lambdiko::Config::RETRY_LIMIT.times do |attempt|
     res = HTTP.get(url)
     raise "HTTP #{res.status}" unless res.status.success?
 
@@ -22,8 +21,8 @@ def fetch_with_retry(url)
     return block_given? ? yield(body) : body
   rescue StandardError => e
     retry_count = attempt + 1
-    if retry_count < DOWNLOAD_RETRY_LIMIT
-      LOGGER.warn("Download retry (#{retry_count}/#{DOWNLOAD_RETRY_LIMIT}): #{e.message} - #{url}")
+    if retry_count < Lambdiko::Config::RETRY_LIMIT
+      LOGGER.warn("Download retry (#{retry_count}/#{Lambdiko::Config::RETRY_LIMIT}): #{e.message} - #{url}")
       sleep 1
     else
       LOGGER.error("Download failed: #{e.message} - #{url}")
@@ -71,7 +70,7 @@ def download_segments(urls, file_dir, &transform)
   urls.each_with_index { |url, index| queue << [url, index] }
 
   threads =
-    DOWNLOAD_THREAD_LIMIT.times.map do
+    Lambdiko::Config::THREAD_LIMIT.times.map do
       Thread.new do
         loop do
           begin

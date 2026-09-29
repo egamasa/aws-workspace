@@ -11,20 +11,11 @@ require 'rexml/document'
 require 'time'
 require 'uri'
 require 'lambdiko/common'
+require 'lambdiko/config'
 require 'lambdiko/notify'
 
-LOGGER = Logger.new($stdout)
+LOGGER = Logger.new($stdout) unless defined?(LOGGER)
 WDAY_LIST = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }.freeze
-
-USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.67 Safari/537.36'
-
-HIBIKI_API_HEADERS = {
-  'Referer' => 'http://hibiki-radio.jp/',
-  'X-Requested-With' => 'XMLHttpRequest',
-  'Origin' => 'http://hibiki-radio.jp',
-  'User-Agent' => USER_AGENT
-}.freeze
 
 # 直近の指定曜日の日付を算出
 def prev_date_of_week(week, include_today: true)
@@ -165,13 +156,13 @@ end
 # 響 番組表（曜日指定）取得
 def hibiki_program_list(wday)
   url = "https://vcms-api.hibiki-radio.jp/api/v1/programs?day_of_week=#{wday}"
-  http_get_json(url, HIBIKI_API_HEADERS)
+  http_get_json(url, Lambdiko::Config::HIBIKI_API_HEADERS)
 end
 
 # 響 番組情報取得
 def get_hibiki_program_info(access_id)
   url = "https://vcms-api.hibiki-radio.jp/api/v1/programs/#{access_id}"
-  http_get_json(url, HIBIKI_API_HEADERS)
+  http_get_json(url, Lambdiko::Config::HIBIKI_API_HEADERS)
 end
 
 # 響 番組検索

@@ -17,9 +17,7 @@ require 'lambdiko/notify'
 require 'lambdiko/s3'
 require_relative 'lib/radiko'
 
-LOGGER = Logger.new($stdout)
-RETRY_LIMIT = 3
-THREAD_LIMIT = 3
+LOGGER = Logger.new($stdout) unless defined?(LOGGER)
 SEEK_SEC = 300
 
 def seek(seek_time, seek_sec = SEEK_SEC)

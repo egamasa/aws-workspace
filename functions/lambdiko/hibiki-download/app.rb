@@ -8,6 +8,7 @@ require 'json'
 require 'logger'
 require 'securerandom'
 require 'time'
+require 'lambdiko/config'
 require 'lambdiko/datetime'
 require 'lambdiko/download'
 require 'lambdiko/ffmpeg'
@@ -16,24 +17,12 @@ require 'lambdiko/metadata'
 require 'lambdiko/notify'
 require 'lambdiko/s3'
 
-LOGGER = Logger.new($stdout)
-RETRY_LIMIT = 3
-THREAD_LIMIT = 3
-
-USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.67 Safari/537.36'
-
-HIBIKI_API_HEADERS = {
-  'Referer' => 'http://hibiki-radio.jp/',
-  'X-Requested-With' => 'XMLHttpRequest',
-  'Origin' => 'http://hibiki-radio.jp',
-  'User-Agent' => USER_AGENT
-}.freeze
+LOGGER = Logger.new($stdout) unless defined?(LOGGER)
 
 # API
 def get_hibiki_stream(video_id)
   url = "https://vcms-api.hibiki-radio.jp/api/v1/videos/play_check?video_id=#{video_id}"
-  res = HTTP.headers(HIBIKI_API_HEADERS).get(url)
+  res = HTTP.headers(Lambdiko::Config::HIBIKI_API_HEADERS).get(url)
   raise "Failed to fetch stream info: HTTP #{res.code}" unless res.status.success?
 
   JSON.parse(res.body.to_s)
