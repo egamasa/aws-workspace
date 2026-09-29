@@ -6,11 +6,11 @@ require 'fileutils'
 require 'http'
 require 'json'
 require 'logger'
-require 'openssl'
 require 'securerandom'
 require 'time'
 require 'uri'
 require 'lambdiko/ffmpeg'
+require 'lambdiko/hls'
 require 'lambdiko/metadata'
 require 'lambdiko/notify'
 require 'lambdiko/s3'
@@ -19,40 +19,11 @@ LOGGER = Logger.new($stdout)
 RETRY_LIMIT = 3
 THREAD_LIMIT = 3
 WDAY_JA = %w[日 月 火 水 木 金 土].freeze
+# プレイリストに IV 指定がない場合の初期化ベクトル（従来実装の値を踏襲）
+DEFAULT_IV = '0000000000000000'
 
 def to_time(time_str)
   Time.strptime(time_str, '%Y%m%d%H%M%S')
-end
-
-def parse_playlist(playlist, base_url = nil)
-  list = []
-  key_uri = nil
-  iv = '0000000000000000' # 16bit
-
-  playlist.to_s.lines.each do |line|
-    line.strip!
-    next if line.empty?
-
-    # 複合キーURI・初期化ベクトル抽出
-    if line.start_with?('#EXT-X-KEY')
-      key_uri = line.match(/URI="(.*?)"/)[1]
-      iv = [line.match(/IV=(.*)/)[1]].pack('H*') if line.include?('IV=')
-    end
-
-    next if line.start_with?('#')
-    list << "#{base_url}#{line}"
-  end
-
-  [list, key_uri, iv]
-end
-
-# セグメント復号
-def decrypt_aes128(data)
-  cipher = OpenSSL::Cipher.new('aes-128-cbc')
-  cipher.decrypt
-  cipher.key = @key
-  cipher.iv = @iv
-  cipher.update(data) + cipher.final
 end
 
 def download_file(url, file_path, mode = :file)
@@ -67,7 +38,7 @@ def download_file(url, file_path, mode = :file)
       return res.body.to_s
     when :segment
       data = res.to_s
-      decrypted_data = decrypt_aes128(data)
+      decrypted_data = decrypt_aes128(data, @key, @iv)
       File.open(file_path, 'wb') { |file| file.write(decrypted_data) }
       return true
     end
@@ -155,7 +126,7 @@ def main(event, context)
     base_url = stream_url.match(%r{^(https://.*/)}).to_s
 
     pre_playlist = HTTP.get(stream_url)
-    playlist_urls, *_ = parse_playlist(pre_playlist)
+    playlist_urls = parse_hls_playlist(pre_playlist)[:segments]
 
     raise 'No playlist URLs found' if playlist_urls.empty?
 
@@ -167,10 +138,12 @@ def main(event, context)
 
     playlist_urls.each do |playlist_url|
       playlist = HTTP.get("#{base_url}#{playlist_url}")
-      playlist_segment_urls, key_uri, @iv = parse_playlist(playlist, base_url)
+      parsed = parse_hls_playlist(playlist, base_url)
+      playlist_segment_urls = parsed[:segments]
       segment_urls.concat(playlist_segment_urls)
 
-      @key = download_file(key_uri, nil, :key)
+      @iv = parsed[:iv] || DEFAULT_IV
+      @key = download_file(parsed[:key_uri], nil, :key)
       segment_file_path_list = download_segments(playlist_segment_urls, file_dir)
       segment_files_count += segment_file_path_list.count
     end

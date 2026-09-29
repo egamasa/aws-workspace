@@ -6,11 +6,11 @@ require 'fileutils'
 require 'http'
 require 'json'
 require 'logger'
-require 'openssl'
 require 'securerandom'
 require 'time'
 require 'uri'
 require 'lambdiko/ffmpeg'
+require 'lambdiko/hls'
 require 'lambdiko/metadata'
 require 'lambdiko/notify'
 require 'lambdiko/s3'
@@ -29,50 +29,6 @@ HIBIKI_API_HEADERS = {
   'Origin' => 'http://hibiki-radio.jp',
   'User-Agent' => USER_AGENT
 }.freeze
-
-# プレイリスト処理
-def parse_pre_playlist(body)
-  urls = []
-  lines = body.to_s.lines.map(&:strip).reject(&:empty?)
-  lines.each_with_index do |line, i|
-    next_line = lines[i + 1]
-    urls << next_line if line.start_with?('#EXT-X-STREAM-INF:') && next_line
-  end
-  urls
-end
-
-def parse_playlist(playlist, base_url)
-  segments = []
-  key_uri = nil
-  iv = nil
-
-  playlist.to_s.lines.each do |line|
-    line.strip!
-    next if line.empty?
-
-    if line.start_with?('#EXT-X-KEY')
-      key_uri = line.match(/URI="(.*?)"/)[1]
-      iv_hex = line.match(/IV=0x([0-9A-Fa-f]+)/)[1]
-      iv = [iv_hex].pack('H*')
-    end
-
-    next if line.start_with?('#')
-
-    url = line.start_with?('http') ? line : "#{base_url}#{line}"
-    segments << url
-  end
-
-  [segments, key_uri, iv]
-end
-
-# セグメント復号
-def decrypt_aes128(data, key, iv)
-  cipher = OpenSSL::Cipher.new('aes-128-cbc')
-  cipher.decrypt
-  cipher.key = key
-  cipher.iv = iv
-  cipher.update(data) + cipher.final
-end
 
 # ダウンロード
 def download_file(url, file_path, mode: :file, key: nil, iv: nil)
@@ -188,7 +144,7 @@ def main(event, _context)
     stream_info = get_hibiki_stream(video_id)
 
     res = HTTP.get(stream_info['playlist_url'])
-    playlist_urls = parse_pre_playlist(res.body)
+    playlist_urls = parse_hls_master_playlist(res.body)
 
     raise 'No playlist URLs found' if playlist_urls.empty?
 
@@ -201,11 +157,13 @@ def main(event, _context)
     playlist_urls.each do |playlist_url|
       base_url = playlist_url.match(%r{^(https?://[^?]+/)}).to_s
       playlist = HTTP.get(playlist_url)
-      playlist_segment_urls, key_uri, iv = parse_playlist(playlist.body, base_url)
+      parsed = parse_hls_playlist(playlist.body, base_url)
+      playlist_segment_urls = parsed[:segments]
       segment_urls.concat(playlist_segment_urls)
 
-      key = download_file(key_uri, file_dir, mode: :key)
-      segment_file_path_list = download_segments(playlist_segment_urls, file_dir, key: key, iv: iv)
+      key = download_file(parsed[:key_uri], file_dir, mode: :key)
+      segment_file_path_list =
+        download_segments(playlist_segment_urls, file_dir, key: key, iv: parsed[:iv])
       segment_files_count += segment_file_path_list.count
     end
 
