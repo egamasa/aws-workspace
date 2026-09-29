@@ -1,5 +1,8 @@
+unless File.exist?('/opt/ruby/lib/lambdiko')
+  $LOAD_PATH.unshift(File.expand_path('../../layers/ruby', __dir__))
+end
+
 require 'aws-sdk-lambda'
-require 'aws-sdk-sns'
 require 'date'
 require 'json'
 require 'logger'
@@ -7,6 +10,7 @@ require 'net/http'
 require 'rexml/document'
 require 'time'
 require 'uri'
+require 'lambdiko/notify'
 
 LOGGER = Logger.new($stdout)
 WDAY_LIST = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }.freeze
@@ -213,34 +217,6 @@ def search_hibiki_programs(list, targets: ['name'], keyword:, custom_title: nil)
   end
 end
 
-def sns_publish(message)
-  sns = Aws::SNS::Client.new
-  sns.publish(topic_arn: ENV['SNS_TOPIC_ARN'], message: message.to_json)
-end
-
-def send_notify(status: nil, description:)
-  title =
-    case status
-    when :info
-      'リクエスト成功'
-    when :warn
-      '検索結果なし'
-    when :error
-      'リクエストエラー'
-    else
-      '検索テスト'
-    end
-
-  message = {
-    service: 'Lambdiko',
-    title:,
-    status: status.to_s.upcase,
-    description:,
-    timestamp: Time.now
-  }
-  sns_publish(message)
-end
-
 def main(event, context)
   mode =
     case event['station_id'].to_s.upcase
@@ -298,7 +274,7 @@ def main(event, context)
   # 検索テストモード: 検索結果を通知して処理終了
   if is_test
     return(
-      send_notify(
+      send_search_notify(
         description:
           "Event\n```json\n#{JSON.pretty_generate(event, ascii_only: false)}\n```\n\nResults\n```json\n#{JSON.pretty_generate(programs, ascii_only: false)}\n```"
       )
@@ -307,7 +283,7 @@ def main(event, context)
 
   if programs.empty?
     LOGGER.warn("No program found: #{JSON.generate(event, ascii_only: false)}")
-    return send_notify(status: :warn, description: "#{event['target']}: #{event['keyword']}")
+    return send_search_notify(status: :warn, description: "#{event['target']}: #{event['keyword']}")
   end
 
   lambda_client = Aws::Lambda::Client.new
@@ -328,7 +304,7 @@ def main(event, context)
       notify_program_title = program[:metadata][:title]
     end
 
-    send_notify(
+    send_search_notify(
       status: :info,
       description:
         "#{notify_program_title}\n#{program[:station_id]} / #{program[:ft]}-#{program[:to]}"
@@ -341,5 +317,5 @@ def lambda_handler(event:, context:)
 rescue StandardError => e
   LOGGER.error("Error [#{e.class}] #{e.message}")
   LOGGER.error(e.backtrace.join("\n"))
-  send_notify(status: :error, description: "#{e.class}\n```\n#{e.message}\n```")
+  send_search_notify(status: :error, description: "#{e.class}\n```\n#{e.message}\n```")
 end

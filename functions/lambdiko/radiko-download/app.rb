@@ -2,7 +2,6 @@ unless File.exist?('/opt/ruby/lib/lambdiko')
   $LOAD_PATH.unshift(File.expand_path('../../layers/ruby', __dir__))
 end
 
-require 'aws-sdk-sns'
 require 'fileutils'
 require 'http'
 require 'json'
@@ -11,6 +10,7 @@ require 'securerandom'
 require 'time'
 require 'lambdiko/ffmpeg'
 require 'lambdiko/metadata'
+require 'lambdiko/notify'
 require 'lambdiko/s3'
 require_relative 'lib/radiko'
 
@@ -125,25 +125,6 @@ def format_airtime(ft_str, to_str)
   }
 end
 
-def sns_publish(message)
-  sns = Aws::SNS::Client.new
-  sns.publish(topic_arn: ENV['SNS_TOPIC_ARN'], message: message.to_json)
-end
-
-def send_notify(status: nil, description: nil, fields: nil)
-  title = { ok: 'ダウンロード完了', error: 'ダウンロードエラー' }[status]
-
-  message = {
-    service: 'Lambdiko',
-    title: title,
-    status: status.to_s.upcase,
-    description: description,
-    fields: fields,
-    timestamp: Time.now
-  }
-  sns_publish(message)
-end
-
 def main(event, context)
   file_dir = nil
 
@@ -214,7 +195,7 @@ def main(event, context)
       { name: 'On Air', value: airtime[:notify], inline: true },
       { name: 'Size', value: "#{file_size} / #{duration}", inline: true }
     ]
-    send_notify(status: :ok, description: s3_file_path, fields: fields)
+    send_download_notify(status: :ok, description: s3_file_path, fields: fields)
   ensure
     FileUtils.rm_rf(file_dir) if file_dir && Dir.exist?(file_dir)
   end
@@ -225,5 +206,5 @@ def lambda_handler(event:, context:)
 rescue StandardError => e
   LOGGER.error("Error [#{e.class}] #{e.message}")
   LOGGER.error(e.backtrace.join("\n"))
-  send_notify(status: :error, description: "#{e.class}\n```\n#{e.message}\n```")
+  send_download_notify(status: :error, description: "#{e.class}\n```\n#{e.message}\n```")
 end
