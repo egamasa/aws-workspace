@@ -8,7 +8,9 @@ require 'json'
 require 'logger'
 require 'securerandom'
 require 'time'
+require 'lambdiko/download'
 require 'lambdiko/ffmpeg'
+require 'lambdiko/hls'
 require 'lambdiko/metadata'
 require 'lambdiko/notify'
 require 'lambdiko/s3'
@@ -27,66 +29,6 @@ end
 def seek(seek_time, seek_sec = SEEK_SEC)
   sought_time = seek_time + seek_sec
   [sought_time, sought_time.strftime('%Y%m%d%H%M%S')]
-end
-
-def parse_playlist(playlist)
-  playlist.to_s.lines.map(&:strip).reject { |line| line.empty? || line.start_with?('#') }
-end
-
-def download_file(url, file_path)
-  RETRY_LIMIT.times do |attempt|
-    File.open(file_path, 'wb') { |file| file.write(HTTP.get(url).body) }
-    return true
-  rescue StandardError => e
-    retry_count = attempt + 1
-    if retry_count < RETRY_LIMIT
-      LOGGER.warn("Download retry (#{retry_count}/#{RETRY_LIMIT}): #{e.message} - #{url}")
-      sleep 1
-    else
-      LOGGER.error("Download failed: #{e.message} - #{url}")
-      return false
-    end
-  end
-end
-
-def create_segment_list_file(urls, file_dir)
-  list_file_path = "#{file_dir}/segment_files.txt"
-
-  File.open(list_file_path, 'w') do |file|
-    urls.each { |url| file.puts "file '#{file_dir}/#{File.basename(url)}'" }
-  end
-
-  list_file_path
-end
-
-def download_segments(urls, file_dir)
-  queue = Queue.new
-  segment_file_path_list = Array.new(urls.size)
-
-  urls.each_with_index { |url, index| queue << [url, index] }
-
-  threads =
-    THREAD_LIMIT.times.map do
-      Thread.new do
-        loop do
-          begin
-            url, index = queue.pop(true)
-            file_name = File.basename(url)
-            file_path = "#{file_dir}/#{file_name}"
-            result = download_file(url, file_path)
-            segment_file_path_list[index] = result ? file_path : nil
-          rescue ThreadError
-            break
-          end
-        end
-      end
-    end
-  threads.each(&:join)
-
-  failed_count = urls.size - segment_file_path_list.compact.size
-  LOGGER.warn("#{failed_count} segment(s) failed to download") if failed_count > 0
-
-  segment_file_path_list.compact
 end
 
 def sanitize_filename(filename)
@@ -154,12 +96,11 @@ def main(event, context)
     while seek_time < end_time
       params[:seek] = seek_str
       pre_playlist = HTTP.headers(headers).get(stream_info[:url], params:)
-      playlist_urls = parse_playlist(pre_playlist)
+      playlist_urls = parse_hls_playlist(pre_playlist)[:segments]
 
       playlist_urls.each do |playlist_url|
         playlist = HTTP.get(playlist_url)
-        segments = parse_playlist(playlist)
-        segment_urls.concat(segments)
+        segment_urls.concat(parse_hls_playlist(playlist)[:segments])
       end
 
       seek_time, seek_str = seek(seek_time)

@@ -1,5 +1,6 @@
 require 'logger'
 require 'time'
+require 'lambdiko/download'
 
 LOGGER = Logger.new($stdout) unless defined?(LOGGER)
 

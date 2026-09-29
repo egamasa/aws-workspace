@@ -8,7 +8,7 @@ require 'json'
 require 'logger'
 require 'securerandom'
 require 'time'
-require 'uri'
+require 'lambdiko/download'
 require 'lambdiko/ffmpeg'
 require 'lambdiko/hls'
 require 'lambdiko/metadata'
@@ -24,77 +24,6 @@ DEFAULT_IV = '0000000000000000'
 
 def to_time(time_str)
   Time.strptime(time_str, '%Y%m%d%H%M%S')
-end
-
-def download_file(url, file_path, mode = :file)
-  RETRY_LIMIT.times do |attempt|
-    res = HTTP.get(url)
-
-    case mode
-    when :file
-      File.open(file_path, 'wb') { |file| file.write(res.body) }
-      return true
-    when :key
-      return res.body.to_s
-    when :segment
-      data = res.to_s
-      decrypted_data = decrypt_aes128(data, @key, @iv)
-      File.open(file_path, 'wb') { |file| file.write(decrypted_data) }
-      return true
-    end
-  rescue StandardError => e
-    retry_count = attempt + 1
-    if retry_count < RETRY_LIMIT
-      LOGGER.warn("Download retry (#{retry_count}/#{RETRY_LIMIT}): #{e.message} - #{url}")
-      sleep 1
-    else
-      LOGGER.error("Download failed: #{e.message} - #{url}")
-      return false
-    end
-  end
-end
-
-def create_segment_list_file(urls, file_dir)
-  list_file_path = "#{file_dir}/segment_files.txt"
-
-  File.open(list_file_path, 'w') do |file|
-    urls.each do |url|
-      file_name = File.basename(URI.parse(url).path)
-      file.puts "file '#{file_dir}/#{file_name}'"
-    end
-  end
-
-  list_file_path
-end
-
-def download_segments(urls, file_dir)
-  queue = Queue.new
-  segment_file_path_list = Array.new(urls.size)
-
-  urls.each_with_index { |url, index| queue << [url, index] }
-
-  threads =
-    THREAD_LIMIT.times.map do
-      Thread.new do
-        loop do
-          begin
-            url, index = queue.pop(true)
-            file_name = File.basename(URI.parse(url).path)
-            file_path = "#{file_dir}/#{file_name}"
-            result = download_file(url, file_path, :segment)
-            segment_file_path_list[index] = result ? file_path : nil
-          rescue ThreadError
-            break
-          end
-        end
-      end
-    end
-  threads.each(&:join)
-
-  failed_count = urls.size - segment_file_path_list.compact.size
-  LOGGER.warn("#{failed_count} segment(s) failed to download") if failed_count > 0
-
-  segment_file_path_list.compact
 end
 
 def sanitize_filename(filename)
@@ -142,9 +71,10 @@ def main(event, context)
       playlist_segment_urls = parsed[:segments]
       segment_urls.concat(playlist_segment_urls)
 
-      @iv = parsed[:iv] || DEFAULT_IV
-      @key = download_file(parsed[:key_uri], nil, :key)
-      segment_file_path_list = download_segments(playlist_segment_urls, file_dir)
+      key = download_key(parsed[:key_uri])
+      iv = parsed[:iv] || DEFAULT_IV
+      segment_file_path_list =
+        download_segments(playlist_segment_urls, file_dir) { |data| decrypt_aes128(data, key, iv) }
       segment_files_count += segment_file_path_list.count
     end
 
