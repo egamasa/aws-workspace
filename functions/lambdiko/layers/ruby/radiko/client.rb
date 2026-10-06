@@ -83,6 +83,27 @@ module Radiko
       { auth_token:, url: base_url }
     end
 
+    # 番組表（日付・放送局ID指定）取得
+    # date は Date / Time など strftime が使えるオブジェクト
+    def get_program_xml(date, station_id)
+      url = "https://radiko.jp/v3/program/station/date/#{date.strftime('%Y%m%d')}/#{station_id}.xml"
+      response = Net::HTTP.get_response(URI.parse(url))
+      unless response.is_a?(Net::HTTPSuccess)
+        raise "Failed to fetch XML: HTTP #{response.code} - #{url}"
+      end
+
+      REXML::Document.new(response.body)
+    end
+
+    # 番組表から放送局名抽出
+    # station_id を省略した場合は最初の station を対象とする
+    def parse_station_name(xml_doc, station_id = nil)
+      stations = xml_doc.elements.to_a('//station')
+      return stations.first&.elements['name']&.text unless station_id
+
+      stations.find { |s| s.attributes['id'] == station_id }&.elements['name']&.text
+    end
+
     def get_area_id_by_station_id(station_id)
       station = get_station(station_id)
       station['area_id'] || ''
