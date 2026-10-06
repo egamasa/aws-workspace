@@ -470,3 +470,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/linux,node,osx,python,sam+config,ruby,visualstudiocode,windows
+
+# lambdiko: 上記 Python 用の `lib/` 除外の対象外とするディレクトリ
+!functions/lambdiko/program-search/lib/
