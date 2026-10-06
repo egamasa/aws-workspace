@@ -1,10 +1,9 @@
+# ダウンロード処理
+# http gem は各関数の Gemfile で導入する
 require 'http'
 require 'logger'
 require 'uri'
 require 'lambdiko/config'
-
-# ダウンロード処理
-# http gem は各関数の Gemfile で導入する
 
 LOGGER = Logger.new($stdout) unless defined?(LOGGER)
 

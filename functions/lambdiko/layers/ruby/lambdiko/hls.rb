@@ -1,6 +1,5 @@
-require 'openssl'
-
 # HLS プレイリスト解析・セグメント復号
+require 'openssl'
 
 # マスタープレイリストからバリアントプレイリストURLを抽出
 # #EXT-X-STREAM-INF の次行をURLとして扱う

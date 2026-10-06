@@ -1,7 +1,6 @@
+# 日時・ファイル名処理
 require 'date'
 require 'time'
-
-# 日時・ファイル名処理
 
 WDAY_JA = %w[日 月 火 水 木 金 土].freeze
 

@@ -1,9 +1,8 @@
+# SNS 通知
+# aws-sdk-sns は各関数の Gemfile で導入する
 require 'aws-sdk-sns'
 require 'json'
 require 'time'
-
-# SNS 通知
-# aws-sdk-sns は各関数の Gemfile で導入する
 
 def sns_publish(message)
   sns = Aws::SNS::Client.new
