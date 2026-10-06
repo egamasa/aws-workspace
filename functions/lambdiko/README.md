@@ -77,7 +77,7 @@ sam deploy --guided --config-env dev
 
 ### RSpec（ユニットテスト）
 
-Lambda Layer の共通ライブラリ（`layers/ruby/lambdiko/`）に対するユニットテストを RSpec で実行する。
+Lambda Layer の共通ライブラリ（`layers/ruby/lambdiko/` および `layers/ruby/radiko/`）に対するユニットテストを RSpec で実行する。
 
 ```bash
 bundle install
@@ -86,15 +86,40 @@ bundle exec rspec
 
 テスト対象：
 
+- `spec/lambdiko/common_spec.rb`
+  - `remove_html_tags`
+  - `zenkaku_to_hankaku`
+- `spec/lambdiko/datetime_spec.rb`
+  - `to_time`
+  - `sanitize_filename`
+  - `format_airtime`
+  - `format_airtime_radiko`
+- `spec/lambdiko/download_spec.rb`
+  - `fetch_with_retry`
+  - `download_file`
+  - `download_key`
+  - `create_segment_list_file`
+  - `download_segments`
+- `spec/lambdiko/ffmpeg_spec.rb`
+  - `run_ffmpeg`
+  - `probe_duration`
+- `spec/lambdiko/hls_spec.rb`
+  - `parse_hls_master_playlist`
+  - `parse_hls_playlist`
+  - `decrypt_aes128`
 - `spec/lambdiko/metadata_spec.rb`
   - `parse_metadata_date`
   - `build_metadata_options`
   - `build_artwork_option`
+- `spec/lambdiko/notify_spec.rb`
+  - `sns_publish`
+  - `send_download_notify`
+  - `send_search_notify`
 - `spec/lambdiko/s3_spec.rb`
   - `upload_to_s3`
-- `spec/lambdiko/ffmpeg_spec.rb`
-  - `run_ffmpeg`
-  - `probe_duration`
+- `spec/radiko/client_spec.rb`
+  - `Radiko::Client#get_program_xml`
+  - `Radiko::Client#parse_station_name`
 
 ### sam local invoke
 
