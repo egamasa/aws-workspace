@@ -1,5 +1,6 @@
 source 'https://rubygems.org'
 
 gem 'aws-sdk-s3'
+gem 'http'
 gem 'rexml'
 gem 'rspec', '~> 3.13'

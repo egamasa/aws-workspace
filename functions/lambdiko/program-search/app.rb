@@ -1,5 +1,8 @@
+unless File.exist?('/opt/ruby/lib/lambdiko')
+  $LOAD_PATH.unshift(File.expand_path('../layers/ruby', __dir__))
+end
+
 require 'aws-sdk-lambda'
-require 'aws-sdk-sns'
 require 'date'
 require 'json'
 require 'logger'
@@ -7,19 +10,12 @@ require 'net/http'
 require 'rexml/document'
 require 'time'
 require 'uri'
+require 'lambdiko/common'
+require 'lambdiko/config'
+require 'lambdiko/notify'
 
-LOGGER = Logger.new($stdout)
+LOGGER = Logger.new($stdout) unless defined?(LOGGER)
 WDAY_LIST = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }.freeze
-
-USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.67 Safari/537.36'
-
-HIBIKI_API_HEADERS = {
-  'Referer' => 'http://hibiki-radio.jp/',
-  'X-Requested-With' => 'XMLHttpRequest',
-  'Origin' => 'http://hibiki-radio.jp',
-  'User-Agent' => USER_AGENT
-}.freeze
 
 # 直近の指定曜日の日付を算出
 def prev_date_of_week(week, include_today: true)
@@ -28,14 +24,6 @@ def prev_date_of_week(week, include_today: true)
   days_ago = (base_date.wday - wday) % 7
 
   base_date - days_ago
-end
-
-def remove_html_tags(text)
-  text.to_s.gsub(%r{</?[^>]+?>}, '').gsub(/\s+/, ' ').strip
-end
-
-def zenkaku_to_hankaku(text)
-  text.to_s.tr('Ａ-Ｚａ-ｚ０-９　', 'A-Za-z0-9 ')
 end
 
 def http_get_xml(url)
@@ -168,13 +156,13 @@ end
 # 響 番組表（曜日指定）取得
 def hibiki_program_list(wday)
   url = "https://vcms-api.hibiki-radio.jp/api/v1/programs?day_of_week=#{wday}"
-  http_get_json(url, HIBIKI_API_HEADERS)
+  http_get_json(url, Lambdiko::Config::HIBIKI_API_HEADERS)
 end
 
 # 響 番組情報取得
 def get_hibiki_program_info(access_id)
   url = "https://vcms-api.hibiki-radio.jp/api/v1/programs/#{access_id}"
-  http_get_json(url, HIBIKI_API_HEADERS)
+  http_get_json(url, Lambdiko::Config::HIBIKI_API_HEADERS)
 end
 
 # 響 番組検索
@@ -211,34 +199,6 @@ def search_hibiki_programs(list, targets: ['name'], keyword:, custom_title: nil)
       }
     }
   end
-end
-
-def sns_publish(message)
-  sns = Aws::SNS::Client.new
-  sns.publish(topic_arn: ENV['SNS_TOPIC_ARN'], message: message.to_json)
-end
-
-def send_notify(status: nil, description:)
-  title =
-    case status
-    when :info
-      'リクエスト成功'
-    when :warn
-      '検索結果なし'
-    when :error
-      'リクエストエラー'
-    else
-      '検索テスト'
-    end
-
-  message = {
-    service: 'Lambdiko',
-    title:,
-    status: status.to_s.upcase,
-    description:,
-    timestamp: Time.now
-  }
-  sns_publish(message)
 end
 
 def main(event, context)
@@ -298,7 +258,7 @@ def main(event, context)
   # 検索テストモード: 検索結果を通知して処理終了
   if is_test
     return(
-      send_notify(
+      send_search_notify(
         description:
           "Event\n```json\n#{JSON.pretty_generate(event, ascii_only: false)}\n```\n\nResults\n```json\n#{JSON.pretty_generate(programs, ascii_only: false)}\n```"
       )
@@ -307,7 +267,7 @@ def main(event, context)
 
   if programs.empty?
     LOGGER.warn("No program found: #{JSON.generate(event, ascii_only: false)}")
-    return send_notify(status: :warn, description: "#{event['target']}: #{event['keyword']}")
+    return send_search_notify(status: :warn, description: "#{event['target']}: #{event['keyword']}")
   end
 
   lambda_client = Aws::Lambda::Client.new
@@ -328,7 +288,7 @@ def main(event, context)
       notify_program_title = program[:metadata][:title]
     end
 
-    send_notify(
+    send_search_notify(
       status: :info,
       description:
         "#{notify_program_title}\n#{program[:station_id]} / #{program[:ft]}-#{program[:to]}"
@@ -341,5 +301,5 @@ def lambda_handler(event:, context:)
 rescue StandardError => e
   LOGGER.error("Error [#{e.class}] #{e.message}")
   LOGGER.error(e.backtrace.join("\n"))
-  send_notify(status: :error, description: "#{e.class}\n```\n#{e.message}\n```")
+  send_search_notify(status: :error, description: "#{e.class}\n```\n#{e.message}\n```")
 end
