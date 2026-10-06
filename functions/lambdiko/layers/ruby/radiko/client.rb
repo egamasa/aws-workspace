@@ -97,11 +97,12 @@ module Radiko
 
     # 番組表から放送局名抽出
     # station_id を省略した場合は最初の station を対象とする
+    # 該当する放送局がない場合は nil を返す
     def parse_station_name(xml_doc, station_id = nil)
       stations = xml_doc.elements.to_a('//station')
-      return stations.first&.elements['name']&.text unless station_id
+      station = station_id ? stations.find { |s| s.attributes['id'] == station_id } : stations.first
 
-      stations.find { |s| s.attributes['id'] == station_id }&.elements['name']&.text
+      station && station.elements['name']&.text
     end
 
     def get_area_id_by_station_id(station_id)
