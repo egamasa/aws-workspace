@@ -7,9 +7,9 @@ require 'openssl'
 def parse_hls_master_playlist(playlist)
   lines = playlist.to_s.lines.map(&:strip).reject(&:empty?)
 
-  lines.each_cons(2).filter_map do |line, next_line|
-    next_line if line.start_with?('#EXT-X-STREAM-INF:')
-  end
+  lines
+    .each_cons(2)
+    .filter_map { |line, next_line| next_line if line.start_with?('#EXT-X-STREAM-INF:') }
 end
 
 # メディアプレイリストからセグメントURL・複合キーURI・初期化ベクトルを抽出

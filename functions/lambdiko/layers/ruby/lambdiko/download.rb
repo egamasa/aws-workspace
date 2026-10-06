@@ -22,7 +22,9 @@ def fetch_with_retry(url)
   rescue StandardError => e
     retry_count = attempt + 1
     if retry_count < Lambdiko::Config::RETRY_LIMIT
-      LOGGER.warn("Download retry (#{retry_count}/#{Lambdiko::Config::RETRY_LIMIT}): #{e.message} - #{url}")
+      LOGGER.warn(
+        "Download retry (#{retry_count}/#{Lambdiko::Config::RETRY_LIMIT}): #{e.message} - #{url}"
+      )
       sleep 1
     else
       LOGGER.error("Download failed: #{e.message} - #{url}")
