@@ -1,10 +1,18 @@
 require 'json'
 require 'net/http'
+require 'rexml/document'
 require 'uri'
 
 # 番組表 API 取得用 HTTP ヘルパー
 module HttpHelper
   private
+
+  def http_get_xml(url)
+    res = Net::HTTP.get_response(URI.parse(url))
+    return REXML::Document.new(res.body) if res.is_a?(Net::HTTPSuccess)
+
+    raise "Failed to fetch XML: HTTP #{res.code} - #{url}"
+  end
 
   def http_get_json(url, headers = {})
     uri = URI.parse(url)

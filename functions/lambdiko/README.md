@@ -77,7 +77,7 @@ sam deploy --guided --config-env dev
 
 ### RSpec（ユニットテスト）
 
-Lambda Layer の共通ライブラリ（`layers/ruby/lambdiko/` および `layers/ruby/radiko/`）に対するユニットテストを RSpec で実行する。
+Lambda Layer の共通ライブラリ（`layers/ruby/lambdiko/`）に対するユニットテストを RSpec で実行する。
 
 ```bash
 bundle install
@@ -117,9 +117,6 @@ bundle exec rspec
   - `send_search_notify`
 - `spec/lambdiko/s3_spec.rb`
   - `upload_to_s3`
-- `spec/radiko/client_spec.rb`
-  - `Radiko::Client#get_program_xml`
-  - `Radiko::Client#parse_station_name`
 
 ### sam local invoke
 

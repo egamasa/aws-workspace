@@ -15,7 +15,7 @@ require 'lambdiko/hls'
 require 'lambdiko/metadata'
 require 'lambdiko/notify'
 require 'lambdiko/s3'
-require 'radiko/client'
+require_relative 'lib/radiko'
 
 LOGGER = Logger.new($stdout) unless defined?(LOGGER)
 SEEK_SEC = 300
