@@ -53,7 +53,7 @@ RSpec.describe 'Lambdiko::Download' do
 
       expect(fetch_with_retry(url)).to eq('content')
       expect(HTTP).to have_received(:get).twice
-      expect(LOGGER).to have_received(:warn).with(/Download retry \(1\/#{retry_limit}\).*#{url}/)
+      expect(LOGGER).to have_received(:warn).with(%r{Download retry \(1/#{retry_limit}\).*#{url}})
     end
 
     it 'HTTP ステータスが成功以外のときはリトライ上限まで試行して nil を返す' do
