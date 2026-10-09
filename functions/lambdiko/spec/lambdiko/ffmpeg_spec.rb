@@ -33,6 +33,8 @@ RSpec.describe 'Lambdiko::FFmpeg' do
           'concat',
           '-i',
           segment_list,
+          '-map',
+          '0:a',
           '-metadata',
           'title=テスト',
           '-c',
@@ -45,10 +47,10 @@ RSpec.describe 'Lambdiko::FFmpeg' do
 
       context 'artwork_option が指定されているとき' do
         let(:artwork_option) do
-          %w[-i /tmp/art.jpg -map 0:a -map 1:v -disposition:1 attached_pic -id3v2_version 3]
+          %w[-i /tmp/art.jpg -map 1:v -disposition:1 attached_pic -id3v2_version 3]
         end
 
-        it 'artwork オプションが metadata より前に挿入される' do
+        it 'artwork 入力の後に -map 0:a、続けて artwork 出力オプションが metadata より前に並ぶ' do
           run_ffmpeg(segment_list, output_path, metadata_options, artwork_option)
           expect(Open3).to have_received(:capture3).with(
             '/opt/bin/ffmpeg',

@@ -32,6 +32,32 @@ RSpec.describe 'Lambdiko::HLS' do
       expect(parse_hls_master_playlist(nil)).to eq([])
       expect(parse_hls_master_playlist('')).to eq([])
     end
+
+    context 'lowest_bandwidth_only: true のとき' do
+      it 'BANDWIDTH が最小のバリアントURLだけを配列で返す' do
+        expect(parse_hls_master_playlist(master_playlist, lowest_bandwidth_only: true)).to eq(
+          %w[https://example.com/64k/index.m3u8]
+        )
+      end
+
+      it 'BANDWIDTH が同値なら先に記載されたものを返す' do
+        playlist = <<~M3U8
+          #EXT-X-STREAM-INF:BANDWIDTH=1000
+          https://example.com/a.m3u8
+          #EXT-X-STREAM-INF:BANDWIDTH=1000
+          https://example.com/b.m3u8
+        M3U8
+
+        expect(parse_hls_master_playlist(playlist, lowest_bandwidth_only: true)).to eq(
+          %w[https://example.com/a.m3u8]
+        )
+      end
+
+      it 'バリアントが無い・nil なら空配列を返す' do
+        expect(parse_hls_master_playlist("#EXTM3U\n", lowest_bandwidth_only: true)).to eq([])
+        expect(parse_hls_master_playlist(nil, lowest_bandwidth_only: true)).to eq([])
+      end
+    end
   end
 
   describe '#parse_hls_playlist' do

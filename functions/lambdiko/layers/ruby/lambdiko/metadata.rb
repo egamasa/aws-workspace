@@ -34,16 +34,5 @@ def build_artwork_option(metadata, file_dir)
     return nil
   end
 
-  [
-    '-i',
-    artwork_path,
-    '-map',
-    '0:a',
-    '-map',
-    '1:v',
-    '-disposition:1',
-    'attached_pic',
-    '-id3v2_version',
-    '3'
-  ]
+  ['-i', artwork_path, '-map', '1:v', '-disposition:1', 'attached_pic', '-id3v2_version', '3']
 end

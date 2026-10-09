@@ -3,12 +3,25 @@ require 'openssl'
 
 # マスタープレイリストからバリアントプレイリストURLを抽出
 # #EXT-X-STREAM-INF の次行をURLとして扱う
-def parse_hls_master_playlist(playlist)
+# lowest_bandwidth_only: true のときは BANDWIDTH が最小のURLだけを配列で返す
+# （BANDWIDTH が無い場合は 0 として扱い、同値なら先に記載されたものを優先する）
+def parse_hls_master_playlist(playlist, lowest_bandwidth_only: false)
   lines = playlist.to_s.lines.map(&:strip).reject(&:empty?)
 
-  lines
-    .each_cons(2)
-    .filter_map { |line, next_line| next_line if line.start_with?('#EXT-X-STREAM-INF:') }
+  variants =
+    lines
+      .each_cons(2)
+      .filter_map do |line, next_line|
+        next unless line.start_with?('#EXT-X-STREAM-INF:')
+
+        [line[/BANDWIDTH=(\d+)/i, 1].to_i, next_line]
+      end
+
+  variants = [
+    variants.min_by.with_index { |(bandwidth, _), i| [bandwidth, i] }
+  ].compact if lowest_bandwidth_only
+
+  variants.map(&:last)
 end
 
 # メディアプレイリストからセグメントURL・複合キーURI・初期化ベクトルを抽出
