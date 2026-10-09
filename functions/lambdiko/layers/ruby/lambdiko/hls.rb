@@ -5,6 +5,8 @@ require 'openssl'
 # #EXT-X-STREAM-INF の次行をURLとして扱う
 # lowest_bandwidth_only: true のときは BANDWIDTH が最小のURLだけを配列で返す
 # （BANDWIDTH が無い場合は 0 として扱い、同値なら先に記載されたものを優先する）
+# 比較に使うのはピークビットレートの BANDWIDTH のみ。
+# AVERAGE-BANDWIDTH は名前が部分一致するため、属性の記載順に関わらず読み取り対象から除く
 def parse_hls_master_playlist(playlist, lowest_bandwidth_only: false)
   lines = playlist.to_s.lines.map(&:strip).reject(&:empty?)
 
@@ -14,7 +16,7 @@ def parse_hls_master_playlist(playlist, lowest_bandwidth_only: false)
       .filter_map do |line, next_line|
         next unless line.start_with?('#EXT-X-STREAM-INF:')
 
-        [line[/BANDWIDTH=(\d+)/i, 1].to_i, next_line]
+        [line[/(?<![\w-])BANDWIDTH=(\d+)/i, 1].to_i, next_line]
       end
 
   variants = [
