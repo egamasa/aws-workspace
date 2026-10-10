@@ -170,6 +170,7 @@ sam local invoke ProgramSearchFunction \
   - 響： `HIBIKI` 固定
 - `week` 検索対象曜日
   - `sun`, `mon`, `tue`, `wed`, `thu`, `fri`, `sat`
+  - 響： 土曜日と日曜日を「土・日曜日」として1つにまとめているため、`sat` / `sun` はどちらを指定しても同じ番組（API の `day_of_week=6`）が対象になる。土・日曜日の番組は不定期更新のものが多く、実際の配信曜日とは一致しない場合がある。
 - `target` 検索対象フィールド
   - radiko： `title`, `pfm`, `desc`, `info`
   - らじる： `title` のみ指定可能

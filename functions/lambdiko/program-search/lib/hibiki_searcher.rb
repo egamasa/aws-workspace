@@ -9,6 +9,10 @@ class HibikiSearcher
   API_BASE_URL = 'https://vcms-api.hibiki-radio.jp/api/v1'.freeze
   API_HEADERS = Lambdiko::Config::HIBIKI_API_HEADERS
 
+  # 曜日 → 響 API の day_of_week
+  # 響は土・日曜日を1つのカテゴリ（6）としてまとめているため、sat / sun はどちらも 6
+  DAY_OF_WEEK = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 6 }.freeze
+
   # 響は曜日指定で番組表を取得するため program_date は使用しない
   def initialize(event, _program_date = nil)
     @event = event
@@ -33,7 +37,12 @@ class HibikiSearcher
 
   # 番組表（曜日指定）取得
   def program_list(wday)
-    http_get_json("#{API_BASE_URL}/programs?day_of_week=#{wday}", API_HEADERS)
+    day =
+      DAY_OF_WEEK.fetch(wday.to_s.to_sym) do
+        raise ArgumentError, "Unsupported week for HiBiKi: #{wday}"
+      end
+
+    http_get_json("#{API_BASE_URL}/programs?day_of_week=#{day}", API_HEADERS)
   end
 
   # 番組情報取得
