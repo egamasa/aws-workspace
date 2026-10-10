@@ -32,6 +32,72 @@ RSpec.describe 'Lambdiko::HLS' do
       expect(parse_hls_master_playlist(nil)).to eq([])
       expect(parse_hls_master_playlist('')).to eq([])
     end
+
+    context 'lowest_bandwidth_only: true のとき' do
+      it 'BANDWIDTH が最小のバリアントURLだけを配列で返す' do
+        expect(parse_hls_master_playlist(master_playlist, lowest_bandwidth_only: true)).to eq(
+          %w[https://example.com/64k/index.m3u8]
+        )
+      end
+
+      it 'BANDWIDTH が同値なら先に記載されたものを返す' do
+        playlist = <<~M3U8
+          #EXT-X-STREAM-INF:BANDWIDTH=1000
+          https://example.com/a.m3u8
+          #EXT-X-STREAM-INF:BANDWIDTH=1000
+          https://example.com/b.m3u8
+        M3U8
+
+        expect(parse_hls_master_playlist(playlist, lowest_bandwidth_only: true)).to eq(
+          %w[https://example.com/a.m3u8]
+        )
+      end
+
+      it 'HiBiKi 動画番組の実レスポンスのように BANDWIDTH が先でも 600k を返す' do
+        playlist = <<~M3U8
+          #EXTM3U
+          #EXT-X-STREAM-INF:BANDWIDTH=730711,AVERAGE-BANDWIDTH=657076,CODECS="avc1.4d401f,mp4a.40.2",RESOLUTION=640x360,FRAME-RATE=29.970
+          https://example.com/playlist_600k.m3u8
+          #EXT-X-STREAM-INF:BANDWIDTH=1154650,AVERAGE-BANDWIDTH=1060931,CODECS="avc1.4d401f,mp4a.40.2",RESOLUTION=640x360,FRAME-RATE=29.970
+          https://example.com/playlist_1000k.m3u8
+        M3U8
+
+        expect(parse_hls_master_playlist(playlist, lowest_bandwidth_only: true)).to eq(
+          %w[https://example.com/playlist_600k.m3u8]
+        )
+      end
+
+      it 'AVERAGE-BANDWIDTH が先に記載されていても BANDWIDTH で比較する' do
+        # AVERAGE-BANDWIDTH を読み取ると high(500000) < low(900000) となり high を誤って選ぶ
+        playlist = <<~M3U8
+          #EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=500000,BANDWIDTH=2000000
+          https://example.com/high.m3u8
+          #EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=900000,BANDWIDTH=1000000
+          https://example.com/low.m3u8
+        M3U8
+
+        expect(parse_hls_master_playlist(playlist, lowest_bandwidth_only: true)).to eq(
+          %w[https://example.com/low.m3u8]
+        )
+      end
+
+      it 'HiBiKi 音声専用番組の実レスポンスのようにバリアントが1つならそれを返す' do
+        playlist = <<~M3U8
+          #EXTM3U
+          #EXT-X-STREAM-INF:BANDWIDTH=77361,AVERAGE-BANDWIDTH=74841,CODECS="mp4a.40.2"
+          https://example.com/playlist_audio.m3u8
+        M3U8
+
+        expect(parse_hls_master_playlist(playlist, lowest_bandwidth_only: true)).to eq(
+          %w[https://example.com/playlist_audio.m3u8]
+        )
+      end
+
+      it 'バリアントが無い・nil なら空配列を返す' do
+        expect(parse_hls_master_playlist("#EXTM3U\n", lowest_bandwidth_only: true)).to eq([])
+        expect(parse_hls_master_playlist(nil, lowest_bandwidth_only: true)).to eq([])
+      end
+    end
   end
 
   describe '#parse_hls_playlist' do

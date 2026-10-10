@@ -37,33 +37,29 @@ def main(event, _context)
     stream_info = get_hibiki_stream(video_id)
 
     res = HTTP.get(stream_info['playlist_url'])
-    playlist_urls = parse_hls_master_playlist(res.body)
 
-    raise 'No playlist URLs found' if playlist_urls.empty?
+    # 動画番組は画質違いのバリアントが複数配信される
+    # 全て処理すると同じ番組が重複するため、最小 BANDWIDTH の1つのみを使う
+    playlist_url = parse_hls_master_playlist(res.body, lowest_bandwidth_only: true).first
+
+    raise 'No playlist URLs found' if playlist_url.nil?
 
     file_dir = "/tmp/#{SecureRandom.uuid}"
     Dir.mkdir(file_dir) unless Dir.exist?(file_dir)
 
-    segment_urls = []
-    segment_files_count = 0
+    base_url = playlist_url.match(%r{^(https?://[^?]+/)}).to_s
+    playlist = HTTP.get(playlist_url)
+    parsed = parse_hls_playlist(playlist.body, base_url)
+    segment_urls = parsed[:segments]
 
-    playlist_urls.each do |playlist_url|
-      base_url = playlist_url.match(%r{^(https?://[^?]+/)}).to_s
-      playlist = HTTP.get(playlist_url)
-      parsed = parse_hls_playlist(playlist.body, base_url)
-      playlist_segment_urls = parsed[:segments]
-      segment_urls.concat(playlist_segment_urls)
-
-      key = download_key(parsed[:key_uri])
-      iv = parsed[:iv]
-      segment_file_path_list =
-        download_segments(playlist_segment_urls, file_dir) { |data| decrypt_aes128(data, key, iv) }
-      segment_files_count += segment_file_path_list.count
-    end
+    key = download_key(parsed[:key_uri])
+    iv = parsed[:iv]
+    segment_file_path_list =
+      download_segments(segment_urls, file_dir) { |data| decrypt_aes128(data, key, iv) }
 
     segment_list_file_path = create_segment_list_file(segment_urls, file_dir)
 
-    raise 'Segment count mismatch' unless segment_urls.count == segment_files_count
+    raise 'Segment count mismatch' unless segment_urls.count == segment_file_path_list.count
 
     airtime = format_airtime(event['ft'])
 

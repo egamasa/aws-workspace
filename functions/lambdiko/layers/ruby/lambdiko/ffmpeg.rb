@@ -15,7 +15,15 @@ def run_ffmpeg(segment_list_file_path, output_file_path, metadata_options, artwo
     '-i',
     segment_list_file_path
   ]
-  cmd.concat(artwork_option) if artwork_option
+
+  # artwork_option は ['-i', 画像パス, ...出力オプション] の形式。
+  # -map は全入力の後でないと指定できないため、-i の2要素だけを先に置く
+  cmd.concat(artwork_option.first(2)) if artwork_option
+
+  # 映像付きストリームでも常に音声のみを出力する（-map 1:v より前に置く）
+  cmd.concat(%w[-map 0:a])
+
+  cmd.concat(artwork_option.drop(2)) if artwork_option
   cmd.concat(metadata_options)
   cmd.concat(['-c', 'copy', '-bsf:a', 'aac_adtstoasc', output_file_path])
 

@@ -110,7 +110,7 @@ RSpec.describe 'Lambdiko::Metadata' do
         result = build_artwork_option({ 'img' => img_url }, file_dir)
 
         expect(result).to include('-i', "#{file_dir}/image.jpg")
-        expect(result).to include('-map', '0:a')
+        expect(result).not_to include('0:a')
         expect(result).to include('-map', '1:v')
         expect(result).to include('-disposition:1', 'attached_pic')
         expect(result).to include('-id3v2_version', '3')
