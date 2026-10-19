@@ -2,10 +2,9 @@
 #
 # S3 バックアップスクリプト
 #
-# ローカルフォルダのファイルを S3 バケットにアップロードする。
-# および Amazon S3 および Cloudflare R2 に対応。
+# ローカルフォルダのファイルを Amazon S3 または Cloudflare R2 にアップロードする。
 #
-# Usage: ./s3-backup.ps1
+# Usage: ./02-s3-backup.ps1
 #
 
 Set-StrictMode -Version Latest
@@ -20,9 +19,10 @@ function err($msg)  { Write-Host "✖ $msg" -ForegroundColor Red }
 # 設定
 # ---------------------------------------------------------------
 # $Bucket: アップロード先のバケット名
-$Bucket   = "your-bucket-name"
-$Year     = Split-Path $PSScriptRoot -Leaf
-$Src      = $PSScriptRoot
+$Bucket = "your-bucket-name"
+$Year   = Split-Path $PSScriptRoot -Leaf
+$Src    = $PSScriptRoot
+$Dst    = "s3://$Bucket/$Year/"
 
 # Cloudflare R2 を使う場合:
 #   1. Cloudflare ダッシュボード → R2 → Manage R2 API Tokens でトークンを発行
@@ -39,30 +39,36 @@ $Endpoint = "https://<account_id>.r2.cloudflarestorage.com"
 # $Endpoint = ""  # Amazon S3 の場合はこちらを使用
 # ---------------------------------------------------------------
 
-$AwsArgs  = @("s3", "sync", $Src, "s3://$Bucket/$Year/", "--exclude", "*.ps1")
+$AwsArgs = @("s3", "sync", $Src, $Dst, "--exclude", "*.ps1")
 if ($Endpoint) { $AwsArgs += @("--endpoint-url", $Endpoint, "--profile", $Profile) }
 
-# ログインチェック（Amazon S3 / SSO のみ）
+# SSO ログイン確認（Amazon S3 のみ）
 if (-not $Endpoint) {
-    info "ログイン確認中..."
+    info "SSO ログイン確認中..."
     try {
         aws sts get-caller-identity 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw }
-        ok "ログイン済み"
+        if ($LASTEXITCODE -ne 0) { throw "Not logged in" }
+        ok "SSO ログイン済み"
     }
     catch {
-        warn "セッションが無効です。ログインします..."
+        warn "SSO セッションが無効です。ログインします..."
         aws sso login
-        if ($LASTEXITCODE -ne 0) { err "ログイン失敗"; exit 1 }
-        ok "ログイン成功"
+        if ($LASTEXITCODE -ne 0) {
+            err "SSO ログイン失敗"
+            exit 1
+        }
+        ok "SSO ログイン成功"
     }
+    Write-Host ""
 }
 
 # アップロード実行
-Write-Host ""
-info "$Src → s3://$Bucket/$Year/ アップロード中..."
+info "$Src → $Dst アップロード中..."
 aws @AwsArgs
-if ($LASTEXITCODE -ne 0) { err "アップロードに失敗しました"; exit 1 }
+if ($LASTEXITCODE -ne 0) {
+    err "アップロードに失敗しました"
+    exit 1
+}
 
 Write-Host ""
 ok "アップロードが完了しました"

@@ -4,7 +4,7 @@
 #
 # ローカルフォルダのファイルを NAS にミラーリングする。
 #
-# Usage: ./nas-sync.ps1
+# Usage: ./03-nas-backup.ps1
 #
 
 Set-StrictMode -Version Latest
@@ -14,11 +14,13 @@ $OutputEncoding = [System.Text.Encoding]::GetEncoding(932)
 
 function info($msg) { Write-Host "▶ $msg" -ForegroundColor Cyan }
 function ok($msg)   { Write-Host "✔ $msg" -ForegroundColor Green }
+function warn($msg) { Write-Host "⚠ $msg" -ForegroundColor Yellow }
 function err($msg)  { Write-Host "✖ $msg" -ForegroundColor Red }
 
-$Src = $PSScriptRoot
+# 設定
 $Year = Split-Path $PSScriptRoot -Leaf
-$Dst = "Z:\Radio\$Year"
+$Src  = $PSScriptRoot
+$Dst  = "Z:\Radio\$Year"
 
 # NAS 接続確認
 info "NAS 接続確認中..."
@@ -32,10 +34,11 @@ if (-not (Test-Path $Dst)) {
 ok "NAS 接続確認済み"
 
 # バックアップ実行
-info "$Src → $Dst 同期中..."
+Write-Host ""
+info "$Src → $Dst バックアップ中..."
 robocopy $Src $Dst /MIR /XF "*.ps1" /R:3 /W:5 /NP /NJH /NJS /NDL /NS /NC | ForEach-Object {
     $line = $_.TrimStart()
-    if ($line -match '^\*EXTRA') { Write-Host "  - $($line -replace '^\*EXTRA File\s+',''  )" -ForegroundColor DarkGray }
+    if ($line -match '^\*EXTRA') { Write-Host "  - $($line -replace '^\*EXTRA File\s+', '')" -ForegroundColor DarkGray }
     elseif ($line -ne '')        { Write-Host "  + $line" -ForegroundColor White }
 }
 if ($LASTEXITCODE -ge 8) {
@@ -44,16 +47,21 @@ if ($LASTEXITCODE -ge 8) {
 }
 
 # ファイル数・フォルダ数比較
-$srcFiles   = (Get-ChildItem $Src -Recurse -File      -Exclude "*.ps1").Count
-$dstFiles   = (Get-ChildItem $Dst -Recurse -File                      ).Count
-$srcFolders = (Get-ChildItem $Src -Recurse -Directory                 ).Count
-$dstFolders = (Get-ChildItem $Dst -Recurse -Directory                 ).Count
+$srcFiles   = (Get-ChildItem $Src -Recurse -File -Exclude "*.ps1").Count
+$dstFiles   = (Get-ChildItem $Dst -Recurse -File).Count
+$srcFolders = (Get-ChildItem $Src -Recurse -Directory).Count
+$dstFolders = (Get-ChildItem $Dst -Recurse -Directory).Count
 Write-Host ""
 if ($srcFiles -eq $dstFiles -and $srcFolders -eq $dstFolders) {
-    ok "ファイル数一致: $srcFiles 件 / フォルダ数一致: $srcFolders 件"
-} else {
+    ok "ファイル $srcFiles 件 / フォルダ $srcFolders 件 一致"
+    Write-Host ""
+    ok "バックアップが完了しました"
+}
+else {
     if ($srcFiles   -ne $dstFiles)   { err "ファイル数不一致: コピー元 $srcFiles 件 / コピー先 $dstFiles 件" }
     if ($srcFolders -ne $dstFolders) { err "フォルダ数不一致: コピー元 $srcFolders 件 / コピー先 $dstFolders 件" }
+    Write-Host ""
+    err "バックアップ結果を確認してください"
 }
 
 Write-Host ""
