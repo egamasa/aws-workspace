@@ -23,7 +23,7 @@ $ConfigPath = @($PSScriptRoot, (Split-Path $PSScriptRoot -Parent)) |
     Where-Object { Test-Path $_ } |
     Select-Object -First 1
 if (-not $ConfigPath) {
-    err "設定ファイル lambdiko.config.psd1 が見つかりません (lambdiko.config.psd1.example を参照)"
+    err "設定ファイル lambdiko.config.psd1 が見つかりません"
     exit 1
 }
 $Config = Import-PowerShellDataFile $ConfigPath
@@ -51,15 +51,17 @@ ok "NAS 接続確認済み"
 # バックアップ実行
 Write-Host ""
 info "$Src → $Dst バックアップ中..."
+$copied = 0
 robocopy $Src $Dst /MIR /XF "*.ps1" "*.psd1" /R:3 /W:5 /NP /NJH /NJS /NDL /NS /NC | ForEach-Object {
     $line = $_.TrimStart()
     if ($line -match '^\*EXTRA') { Write-Host "  - $($line -replace '^\*EXTRA File\s+', '')" -ForegroundColor DarkGray }
-    elseif ($line -ne '')        { Write-Host "  + $line" -ForegroundColor White }
+    elseif ($line -ne '')        { Write-Host "  + $line" -ForegroundColor White; $script:copied++ }
 }
 if ($LASTEXITCODE -ge 8) {
     err "バックアップに失敗しました (robocopy exit code: $LASTEXITCODE)"
     exit 1
 }
+ok "${Dst}（+ $copied 件）"
 
 # ファイル数・フォルダ数比較
 $srcFiles   = (Get-ChildItem $Src -Recurse -File -Exclude "*.ps1", "*.psd1").Count
@@ -70,7 +72,7 @@ Write-Host ""
 if ($srcFiles -eq $dstFiles -and $srcFolders -eq $dstFolders) {
     ok "ファイル $srcFiles 件 / フォルダ $srcFolders 件 一致"
     Write-Host ""
-    ok "バックアップが完了しました"
+    ok "バックアップ完了"
 }
 else {
     if ($srcFiles   -ne $dstFiles)   { err "ファイル数不一致: コピー元 $srcFiles 件 / コピー先 $dstFiles 件" }
@@ -78,6 +80,3 @@ else {
     Write-Host ""
     err "バックアップ結果を確認してください"
 }
-
-Write-Host ""
-Read-Host "Enter キーで終了"

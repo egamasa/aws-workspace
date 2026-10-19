@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 #
 # S3 ダウンロードスクリプト
 #
@@ -15,13 +15,26 @@ function ok($msg)   { Write-Host "✔ $msg" -ForegroundColor Green }
 function warn($msg) { Write-Host "⚠ $msg" -ForegroundColor Yellow }
 function err($msg)  { Write-Host "✖ $msg" -ForegroundColor Red }
 
+# AWS CLI 出力はグレー色表示
+# オブジェクト件数（download: / upload: / delete: の行数）を $script:AwsCount に格納
+function Invoke-Aws {
+    $script:AwsCount = 0
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & aws @args 2>&1 | ForEach-Object {
+        if ("$_" -match '^(download|upload|delete): ') { $script:AwsCount++ }
+        Write-Host "  $_" -ForegroundColor DarkGray
+    }
+    $ErrorActionPreference = $prev
+}
+
 # 設定ファイル読み込み
 $ConfigPath = @($PSScriptRoot, (Split-Path $PSScriptRoot -Parent)) |
     ForEach-Object { Join-Path $_ "lambdiko.config.psd1" } |
     Where-Object { Test-Path $_ } |
     Select-Object -First 1
 if (-not $ConfigPath) {
-    err "設定ファイル lambdiko.config.psd1 が見つかりません (lambdiko.config.psd1.example を参照)"
+    err "設定ファイル lambdiko.config.psd1 が見つかりません"
     exit 1
 }
 $Config = Import-PowerShellDataFile $ConfigPath
@@ -55,12 +68,13 @@ catch {
 foreach ($bucket in $Buckets) {
     Write-Host ""
     info "s3://$bucket/ → $Dst ダウンロード中..."
-    aws s3 sync "s3://$bucket/" $Dst
+    Invoke-Aws s3 sync "s3://$bucket/" $Dst --no-progress
     if ($LASTEXITCODE -ne 0) {
         err "$bucket のダウンロードに失敗しました"
         exit 1
     }
+    ok "${bucket}（$script:AwsCount 件）"
 }
 
 Write-Host ""
-ok "すべてのダウンロードが完了しました"
+ok "ダウンロード完了"

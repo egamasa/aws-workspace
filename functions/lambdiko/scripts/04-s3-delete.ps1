@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 #
 # S3 削除スクリプト
 #
@@ -15,13 +15,26 @@ function ok($msg)   { Write-Host "✔ $msg" -ForegroundColor Green }
 function warn($msg) { Write-Host "⚠ $msg" -ForegroundColor Yellow }
 function err($msg)  { Write-Host "✖ $msg" -ForegroundColor Red }
 
+# AWS CLI 出力はグレー色表示
+# オブジェクト件数（download: / upload: / delete: の行数）を $script:AwsCount に格納
+function Invoke-Aws {
+    $script:AwsCount = 0
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & aws @args 2>&1 | ForEach-Object {
+        if ("$_" -match '^(download|upload|delete): ') { $script:AwsCount++ }
+        Write-Host "  $_" -ForegroundColor DarkGray
+    }
+    $ErrorActionPreference = $prev
+}
+
 # 設定ファイル読み込み
 $ConfigPath = @($PSScriptRoot, (Split-Path $PSScriptRoot -Parent)) |
     ForEach-Object { Join-Path $_ "lambdiko.config.psd1" } |
     Where-Object { Test-Path $_ } |
     Select-Object -First 1
 if (-not $ConfigPath) {
-    err "設定ファイル lambdiko.config.psd1 が見つかりません (lambdiko.config.psd1.example を参照)"
+    err "設定ファイル lambdiko.config.psd1 が見つかりません"
     exit 1
 }
 $Config = Import-PowerShellDataFile $ConfigPath
@@ -56,12 +69,12 @@ foreach ($bucket in $Buckets) {
     info "s3://$bucket/ オブジェクト確認中..."
     $objects = aws s3 ls "s3://$bucket" --recursive
     if (-not $objects) {
-        ok "オブジェクト 0 件"
+        ok "${bucket}（0 件）"
         continue
     }
     $count = ($objects | Measure-Object).Count
     $objects | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
-    info "オブジェクト $count 件"
+    info "${bucket}（$count 件）"
 
     Write-Host ""
     Write-Host "本当に削除しますか？ (y/N): " -ForegroundColor Red -NoNewline
@@ -73,7 +86,7 @@ foreach ($bucket in $Buckets) {
 
     Write-Host ""
     info "s3://$bucket/ 削除中..."
-    aws s3 rm "s3://$bucket" --recursive
+    Invoke-Aws s3 rm "s3://$bucket" --recursive
     if ($LASTEXITCODE -ne 0) {
         err "$bucket の削除に失敗しました"
         exit 1
@@ -81,4 +94,4 @@ foreach ($bucket in $Buckets) {
 }
 
 Write-Host ""
-ok "すべての削除が完了しました"
+ok "削除完了"
