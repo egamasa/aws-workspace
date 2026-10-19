@@ -68,6 +68,10 @@ foreach ($bucket in $Buckets) {
     Write-Host ""
     info "s3://$bucket/ オブジェクト確認中..."
     $objects = aws s3 ls "s3://$bucket" --recursive
+    if ($LASTEXITCODE -ne 0) {
+        err "$bucket のオブジェクト一覧取得に失敗しました"
+        exit 1
+    }
     if (-not $objects) {
         ok "${bucket}（0 件）"
         continue
