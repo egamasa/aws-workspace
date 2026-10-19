@@ -15,31 +15,30 @@ function ok($msg)   { Write-Host "✔ $msg" -ForegroundColor Green }
 function warn($msg) { Write-Host "⚠ $msg" -ForegroundColor Yellow }
 function err($msg)  { Write-Host "✖ $msg" -ForegroundColor Red }
 
-# ---------------------------------------------------------------
-# 設定
-# ---------------------------------------------------------------
-# $Bucket: アップロード先のバケット名
-$Bucket = "your-bucket-name"
-$Year   = Split-Path $PSScriptRoot -Leaf
-$Src    = $PSScriptRoot
-$Dst    = "s3://$Bucket/$Year/"
+# 設定ファイル読み込み
+$ConfigPath = @($PSScriptRoot, (Split-Path $PSScriptRoot -Parent)) |
+    ForEach-Object { Join-Path $_ "lambdiko.config.psd1" } |
+    Where-Object { Test-Path $_ } |
+    Select-Object -First 1
+if (-not $ConfigPath) {
+    err "設定ファイル lambdiko.config.psd1 が見つかりません (lambdiko.config.psd1.example を参照)"
+    exit 1
+}
+$Config = Import-PowerShellDataFile $ConfigPath
+if (-not $Config.BackupBucket) {
+    err "設定ファイルに BackupBucket がありません"
+    exit 1
+}
 
-# Cloudflare R2 を使う場合:
-#   1. Cloudflare ダッシュボード → R2 → Manage R2 API Tokens でトークンを発行
-#   2. aws configure --profile r2 で Access Key ID / Secret Access Key を登録
-#   3. $Profile にプロファイル名を設定
-#   4. $Endpoint に R2 のエンドポイント URL を設定
-#      （Cloudflare ダッシュボード → R2 → バケット → Settings で確認）
-#
-# Amazon S3 を使う場合:
-#   $Endpoint を空文字にする（AWS SSO でログイン済みであること）
-# ---------------------------------------------------------------
-$Profile  = "r2"
-$Endpoint = "https://<account_id>.r2.cloudflarestorage.com"
-# $Endpoint = ""  # Amazon S3 の場合はこちらを使用
-# ---------------------------------------------------------------
+# 設定（Cloudflare R2 / Amazon S3 の切り替えは設定ファイルを参照）
+$Bucket   = $Config.BackupBucket
+$Profile  = $Config.BackupProfile
+$Endpoint = $Config.BackupEndpoint
+$Year     = Split-Path $PSScriptRoot -Leaf
+$Src      = $PSScriptRoot
+$Dst      = "s3://$Bucket/$Year/"
 
-$AwsArgs = @("s3", "sync", $Src, $Dst, "--exclude", "*.ps1")
+$AwsArgs = @("s3", "sync", $Src, $Dst, "--exclude", "*.ps1", "--exclude", "*.psd1")
 if ($Endpoint) { $AwsArgs += @("--endpoint-url", $Endpoint, "--profile", $Profile) }
 
 # SSO ログイン確認（Amazon S3 のみ）

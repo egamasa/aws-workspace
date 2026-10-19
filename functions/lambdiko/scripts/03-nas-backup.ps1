@@ -17,10 +17,25 @@ function ok($msg)   { Write-Host "✔ $msg" -ForegroundColor Green }
 function warn($msg) { Write-Host "⚠ $msg" -ForegroundColor Yellow }
 function err($msg)  { Write-Host "✖ $msg" -ForegroundColor Red }
 
+# 設定ファイル読み込み
+$ConfigPath = @($PSScriptRoot, (Split-Path $PSScriptRoot -Parent)) |
+    ForEach-Object { Join-Path $_ "lambdiko.config.psd1" } |
+    Where-Object { Test-Path $_ } |
+    Select-Object -First 1
+if (-not $ConfigPath) {
+    err "設定ファイル lambdiko.config.psd1 が見つかりません (lambdiko.config.psd1.example を参照)"
+    exit 1
+}
+$Config = Import-PowerShellDataFile $ConfigPath
+if (-not $Config.NasRoot) {
+    err "設定ファイルに NasRoot がありません"
+    exit 1
+}
+
 # 設定
 $Year = Split-Path $PSScriptRoot -Leaf
 $Src  = $PSScriptRoot
-$Dst  = "Z:\Radio\$Year"
+$Dst  = Join-Path $Config.NasRoot $Year
 
 # NAS 接続確認
 info "NAS 接続確認中..."
@@ -36,7 +51,7 @@ ok "NAS 接続確認済み"
 # バックアップ実行
 Write-Host ""
 info "$Src → $Dst バックアップ中..."
-robocopy $Src $Dst /MIR /XF "*.ps1" /R:3 /W:5 /NP /NJH /NJS /NDL /NS /NC | ForEach-Object {
+robocopy $Src $Dst /MIR /XF "*.ps1" "*.psd1" /R:3 /W:5 /NP /NJH /NJS /NDL /NS /NC | ForEach-Object {
     $line = $_.TrimStart()
     if ($line -match '^\*EXTRA') { Write-Host "  - $($line -replace '^\*EXTRA File\s+', '')" -ForegroundColor DarkGray }
     elseif ($line -ne '')        { Write-Host "  + $line" -ForegroundColor White }
@@ -47,7 +62,7 @@ if ($LASTEXITCODE -ge 8) {
 }
 
 # ファイル数・フォルダ数比較
-$srcFiles   = (Get-ChildItem $Src -Recurse -File -Exclude "*.ps1").Count
+$srcFiles   = (Get-ChildItem $Src -Recurse -File -Exclude "*.ps1", "*.psd1").Count
 $dstFiles   = (Get-ChildItem $Dst -Recurse -File).Count
 $srcFolders = (Get-ChildItem $Src -Recurse -Directory).Count
 $dstFolders = (Get-ChildItem $Dst -Recurse -Directory).Count

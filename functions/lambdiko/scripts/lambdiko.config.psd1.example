@@ -1,0 +1,29 @@
+# Lambdiko ファイル整理スクリプト 設定ファイル
+#
+# このファイルを lambdiko.config.psd1 にコピーして、実際の値に書き換える。
+# スクリプトと同じフォルダ、または1つ上のフォルダに置く（スクリプトと同じフォルダが優先）。
+@{
+    # --- 01-s3-download / 04-s3-delete ---------------------------
+    # 録音データ保存先 S3 バケット名
+    SourceBuckets  = @("your-radiko-bucket-name", "your-podcast-bucket-name")
+
+    # --- 02-s3-backup --------------------------------------------
+    # バックアップ先バケット名（バケット内には「年フォルダ名/」で保存される）
+    BackupBucket   = "your-bucket-name"
+
+    # Cloudflare R2 を使う場合:
+    #   1. Cloudflare ダッシュボード → R2 → Manage R2 API Tokens でトークンを発行
+    #   2. aws configure --profile r2 で Access Key ID / Secret Access Key を登録
+    #   3. BackupProfile にプロファイル名を設定
+    #   4. BackupEndpoint に R2 のエンドポイント URL を設定
+    #      （Cloudflare ダッシュボード → R2 → バケット → Settings で確認）
+    #
+    # Amazon S3 を使う場合:
+    #   BackupEndpoint を空文字にする（AWS SSO でログイン済みであること）
+    BackupProfile  = "r2"
+    BackupEndpoint = "https://<account_id>.r2.cloudflarestorage.com"
+
+    # --- 03-nas-backup -------------------------------------------
+    # NAS のバックアップ先ルート（この下に「年フォルダ名」でミラーリングされる）
+    NasRoot        = 'X:\path\to\backup'
+}

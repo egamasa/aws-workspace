@@ -15,8 +15,23 @@ function ok($msg)   { Write-Host "✔ $msg" -ForegroundColor Green }
 function warn($msg) { Write-Host "⚠ $msg" -ForegroundColor Yellow }
 function err($msg)  { Write-Host "✖ $msg" -ForegroundColor Red }
 
+# 設定ファイル読み込み
+$ConfigPath = @($PSScriptRoot, (Split-Path $PSScriptRoot -Parent)) |
+    ForEach-Object { Join-Path $_ "lambdiko.config.psd1" } |
+    Where-Object { Test-Path $_ } |
+    Select-Object -First 1
+if (-not $ConfigPath) {
+    err "設定ファイル lambdiko.config.psd1 が見つかりません (lambdiko.config.psd1.example を参照)"
+    exit 1
+}
+$Config = Import-PowerShellDataFile $ConfigPath
+if (-not $Config.SourceBuckets) {
+    err "設定ファイルに SourceBuckets がありません"
+    exit 1
+}
+
 # 設定
-$Buckets = @("your-radiko-bucket-name", "your-podcast-bucket-name")
+$Buckets = $Config.SourceBuckets
 
 # SSO ログイン確認
 info "SSO ログイン確認中..."
