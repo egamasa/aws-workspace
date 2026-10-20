@@ -42,6 +42,10 @@ if (-not $Config.BackupBucket) {
     err "設定ファイルに BackupBucket がありません"
     exit 1
 }
+if ($Config.BackupEndpoint -and -not $Config.BackupProfile) {
+    err "設定ファイルに BackupProfile がありません（BackupEndpoint 指定時は必須）"
+    exit 1
+}
 
 # 設定（Cloudflare R2 / Amazon S3 の切り替えは設定ファイルを参照）
 $Bucket   = $Config.BackupBucket
