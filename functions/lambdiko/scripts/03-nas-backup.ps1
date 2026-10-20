@@ -64,10 +64,10 @@ if ($LASTEXITCODE -ge 8) {
 ok "${Dst}（+ $copied 件）"
 
 # ファイル数・フォルダ数比較
-$srcFiles   = (Get-ChildItem $Src -Recurse -File -Exclude "*.ps1", "*.psd1").Count
-$dstFiles   = (Get-ChildItem $Dst -Recurse -File -Exclude "*.ps1", "*.psd1").Count
-$srcFolders = (Get-ChildItem $Src -Recurse -Directory).Count
-$dstFolders = (Get-ChildItem $Dst -Recurse -Directory).Count
+$srcFiles   = @(Get-ChildItem $Src -Recurse -File -Exclude "*.ps1", "*.psd1").Count
+$dstFiles   = @(Get-ChildItem $Dst -Recurse -File -Exclude "*.ps1", "*.psd1").Count
+$srcFolders = @(Get-ChildItem $Src -Recurse -Directory).Count
+$dstFolders = @(Get-ChildItem $Dst -Recurse -Directory).Count
 Write-Host ""
 if ($srcFiles -eq $dstFiles -and $srcFolders -eq $dstFolders) {
     ok "ファイル $srcFiles 件 / フォルダ $srcFolders 件 一致"
