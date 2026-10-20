@@ -79,4 +79,5 @@ else {
     if ($srcFolders -ne $dstFolders) { err "フォルダ数不一致: コピー元 $srcFolders 件 / コピー先 $dstFolders 件" }
     Write-Host ""
     err "バックアップ結果を確認してください"
+    exit 1
 }
