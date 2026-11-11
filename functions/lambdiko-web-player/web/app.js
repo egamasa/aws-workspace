@@ -3,7 +3,9 @@ import { createAuth } from './auth.js';
 import { createPositionStore } from './positions.js';
 
 const $ = (id) => document.getElementById(id);
-const audio = $('audio');
+// <audio> を 2 つ交互に使う。audio が再生中（画面に表示する方）、standby は次の番組の先読み用
+let audio = $('audio');
+let standby = $('audio-standby');
 const positions = createPositionStore();
 const auth = createAuth({
   cognitoDomain: config.cognitoDomain,
@@ -15,10 +17,12 @@ const LAST_KEY = 'lwp:last';
 const RATE_KEY = 'lwp:rate';
 const ORDER_KEY = 'lwp:order';
 const SAVE_INTERVAL_MS = 5000;
-// 残りがこの秒数を切ったら、次の番組の署名付き URL を先に取得しておく
-const PREFETCH_BEFORE_END_SEC = 60;
-// 先に取得した URL を使う期間（署名付き URL の有効期限より十分短くする）
-const PREFETCH_FRESH_MS = 10 * 60 * 1000;
+// 残りがこの秒数を切ったら、次の番組を standby に先読みする
+const PRELOAD_BEFORE_END_SEC = 120;
+// 先読みした番組を使う期間（署名付き URL の有効期限より十分短くする）
+const PRELOAD_MAX_AGE_MS = 60 * 60 * 1000;
+// 先読みに失敗したときに、やり直すまでの間隔
+const PRELOAD_RETRY_MS = 30 * 1000;
 // 番組の読み込みに失敗したときに、やり直すまでの待ち時間
 const LOAD_RETRY_DELAYS_MS = [1000, 3000, 10000];
 
@@ -29,8 +33,8 @@ let lastSavedAt = 0;
 let recoverCount = 0;
 let wantPlaying = false; // ユーザーが再生中のつもりか（エラーによる停止では false にしない）
 let loadSeq = 0; // load() の世代。新しい番組を選ぶたびに進め、古い読み込みの結果を捨てるのに使う
-let prefetched = null; // 次の番組の署名付き URL { key, url, at }
-let prefetching = false;
+let preloaded = null; // standby に先読みした番組 { key, at, failed }
+let preloading = false;
 
 // 新しい load() に追い越された古い読み込み。エラーとしては扱わない
 class Superseded extends Error {}
@@ -164,63 +168,96 @@ async function load(ep, { autoplay }) {
     });
   }
 
-  // 先に取得した URL があれば、通信を待たずにその場で src を差し替えて再生する。
-  // iOS では再生が終わって音が止まるとバックグラウンドの通信が止まるため、
-  // ended の処理中に URL を取りに行くと、次の番組が読み込まれず止まってしまう
   const seq = loadSeq;
   const startAt = positions.resumeAt(ep.key);
-  let source = takePrefetchedUrl(ep.key) ?? (() => fetchEpisodeUrl(ep.key));
+
+  // 次の番組を standby に先読みしてあれば、通信を待たずに切り替えて再生する。
+  // Android の Chrome は画面オフで音が止まると通信できなくなるため、
+  // 番組が終わってから読み込みを始めると失敗する
+  if (takePreloaded(ep.key)) {
+    try {
+      await switchToStandby(startAt, { autoplay });
+      return;
+    } catch (err) {
+      if (!(err instanceof MediaLoadError)) throw err;
+      console.warn(err);
+    }
+  } else {
+    clearStandby();
+  }
+
   // 読み込みに失敗したら（通信の失敗、URL の期限切れなど）、URL を取り直して何度かやり直す
   for (let attempt = 0; ; attempt++) {
     try {
-      await setSource(source, startAt, { autoplay });
+      await setSource(() => fetchEpisodeUrl(ep.key), startAt, { autoplay });
       return;
     } catch (err) {
       if (!(err instanceof MediaLoadError) || attempt >= LOAD_RETRY_DELAYS_MS.length) throw err;
       console.warn(err);
       await new Promise((r) => setTimeout(r, LOAD_RETRY_DELAYS_MS[attempt]));
       if (seq !== loadSeq) throw new Superseded();
-      source = () => fetchEpisodeUrl(ep.key);
     }
   }
 }
 
-// 署名付き URL（または URL を取得する関数）で src を差し替え、メタデータ取得後に指定位置へシークする
-// URL を文字列で渡すと、await を挟まずに src の差し替えと play() まで行う
+// 署名付き URL を取得して src を差し替え、メタデータ取得後に指定位置へシークする
 // 途中で別の番組が選ばれたら（loadSeq が進んだら）Superseded を投げて何も変更しない
-async function setSource(urlOrGetter, startAt, { autoplay = false } = {}) {
+async function setSource(getUrl, startAt, { autoplay = false } = {}) {
   const seq = loadSeq;
   loading = true;
   try {
-    const url = typeof urlOrGetter === 'string' ? urlOrGetter : await urlOrGetter();
+    const url = await getUrl();
     if (seq !== loadSeq) throw new Superseded();
-    await new Promise((resolve, reject) => {
-      const cleanup = () => {
-        audio.removeEventListener('loadedmetadata', onMeta);
-        audio.removeEventListener('error', onError);
-      };
-      const onMeta = () => {
-        cleanup();
-        if (seq !== loadSeq) return reject(new Superseded());
-        if (startAt > 0) audio.currentTime = startAt;
-        audio.playbackRate = Number($('rate').value);
-        resolve();
-      };
-      const onError = () => {
-        cleanup();
-        if (seq !== loadSeq) return reject(new Superseded());
-        reject(new MediaLoadError(audio.error));
-      };
-      audio.addEventListener('loadedmetadata', onMeta);
-      audio.addEventListener('error', onError);
-      audio.src = url;
-      // メタデータを待たずに再生を始める（iOS はメタデータを先読みしないことがある）
-      if (autoplay) audio.play().catch(() => {});
-    });
+    audio.src = url;
+    // メタデータを待たずに再生を始める（iOS はメタデータを先読みしないことがある）
+    if (autoplay) audio.play().catch(() => {});
+    await waitForMetadata(audio, seq, startAt);
   } finally {
     // 追い越された場合、loading は新しい読み込みが管理する
     if (seq === loadSeq) loading = false;
   }
+}
+
+// standby（先読みした番組）を再生側に切り替える
+// 前の番組の要素を止めるのは、次の番組の play() を呼んでから（音の途切れる時間を作らないため）
+async function switchToStandby(startAt, { autoplay }) {
+  const seq = loadSeq;
+  const prev = audio;
+  [audio, standby] = [standby, audio];
+  audio.hidden = false;
+  prev.hidden = true;
+  audio.playbackRate = Number($('rate').value);
+  loading = true;
+  try {
+    if (autoplay) audio.play().catch(() => {});
+    clearStandby();
+    await waitForMetadata(audio, seq, startAt);
+  } finally {
+    if (seq === loadSeq) loading = false;
+  }
+}
+
+// メタデータの読み込みを待ち、指定位置へシークする（読み込み済みならすぐに済ませる）
+function waitForMetadata(el, seq, startAt) {
+  return new Promise((resolve, reject) => {
+    const finish = (fn) => {
+      el.removeEventListener('loadedmetadata', onMeta);
+      el.removeEventListener('error', onError);
+      if (seq !== loadSeq) reject(new Superseded());
+      else fn();
+    };
+    const onMeta = () =>
+      finish(() => {
+        if (startAt > 0 && Math.abs(el.currentTime - startAt) > 1) el.currentTime = startAt;
+        el.playbackRate = Number($('rate').value);
+        resolve();
+      });
+    const onError = () => finish(() => reject(new MediaLoadError(el.error)));
+    el.addEventListener('loadedmetadata', onMeta);
+    el.addEventListener('error', onError);
+    if (el.error) onError();
+    else if (el.readyState >= HTMLMediaElement.HAVE_METADATA) onMeta();
+  });
 }
 
 const play = (ep) => load(ep, { autoplay: true }).catch(handleError);
@@ -269,26 +306,57 @@ function playAdjacent(offset) {
   if (ep) play(ep);
 }
 
-function takePrefetchedUrl(key) {
-  const p = prefetched;
-  prefetched = null;
-  return p?.key === key && Date.now() - p.at < PREFETCH_FRESH_MS ? p.url : null;
+// 先読みした番組が使えるか（key が一致し、読み込みに失敗しておらず、古すぎない）
+function takePreloaded(key) {
+  const p = preloaded;
+  preloaded = null;
+  return p?.key === key && !p.failed && !standby.error && Date.now() - p.at < PRELOAD_MAX_AGE_MS;
 }
 
-// 再生中（音が出ていてバックグラウンドでも通信できるうち）に、次の番組の URL を取得しておく
-async function prefetchNext() {
-  if (prefetching || !audio.duration || audio.duration - audio.currentTime > PREFETCH_BEFORE_END_SEC) return;
+function clearStandby() {
+  preloaded = null;
+  standby.pause();
+  if (standby.hasAttribute('src')) {
+    standby.removeAttribute('src');
+    standby.load();
+  }
+}
+
+// 再生中（音が出ていてバックグラウンドでも通信できるうち）に、次の番組を standby に読み込んでおく
+async function preloadNext() {
+  if (preloading || !audio.duration || audio.duration - audio.currentTime > PRELOAD_BEFORE_END_SEC) return;
   const next = adjacentEpisode(1);
   if (!next) return;
-  if (prefetched?.key === next.key && Date.now() - prefetched.at < PREFETCH_FRESH_MS) return;
-  prefetching = true;
+  if (preloaded?.key === next.key) {
+    const age = Date.now() - preloaded.at;
+    if (age < (preloaded.failed || standby.error ? PRELOAD_RETRY_MS : PRELOAD_MAX_AGE_MS)) return;
+  }
+  const seq = loadSeq;
+  preloading = true;
   try {
-    prefetched = { key: next.key, url: await fetchEpisodeUrl(next.key), at: Date.now() };
+    const url = await fetchEpisodeUrl(next.key);
+    if (seq !== loadSeq) return;
+    const el = standby;
+    preloaded = { key: next.key, at: Date.now() };
+    el.preload = 'auto';
+    el.src = url;
+    // 続きから再生する番組なら、その位置のデータを読み込ませる
+    const at = positions.resumeAt(next.key);
+    if (at > 0) {
+      el.addEventListener(
+        'loadedmetadata',
+        () => {
+          if (el === standby && preloaded?.key === next.key) el.currentTime = at;
+        },
+        { once: true },
+      );
+    }
   } catch (err) {
-    // 失敗しても ended 時に取り直すので、ここでは記録だけする
+    // 失敗しても番組の切り替え時に読み込み直すので、ここでは記録だけする
     console.error(err);
+    if (seq === loadSeq) preloaded = { key: next.key, at: Date.now(), failed: true };
   } finally {
-    prefetching = false;
+    preloading = false;
   }
 }
 
@@ -333,23 +401,27 @@ function bindEvents() {
     localStorage.setItem(RATE_KEY, $('rate').value);
   });
 
-  audio.addEventListener('timeupdate', () => {
-    if (audio.paused || loading) return;
-    if (Date.now() - lastSavedAt > SAVE_INTERVAL_MS) savePosition();
-    prefetchNext();
-  });
-  audio.addEventListener('play', () => (wantPlaying = true));
-  audio.addEventListener('pause', () => {
-    if (!audio.error && !loading) wantPlaying = false;
-    savePosition();
-  });
-  audio.addEventListener('ended', () => {
-    wantPlaying = false;
-    savePosition();
-    playAdjacent(1);
-  });
-  audio.addEventListener('playing', () => (recoverCount = 0));
-  audio.addEventListener('error', () => recover());
+  // 2 つの <audio> のうち、再生側（audio）のイベントだけを扱う
+  for (const el of [audio, standby]) {
+    const on = (type, fn) => el.addEventListener(type, (e) => e.target === audio && fn());
+    on('timeupdate', () => {
+      if (audio.paused || loading) return;
+      if (Date.now() - lastSavedAt > SAVE_INTERVAL_MS) savePosition();
+      preloadNext();
+    });
+    on('play', () => (wantPlaying = true));
+    on('pause', () => {
+      if (!audio.error && !loading) wantPlaying = false;
+      savePosition();
+    });
+    on('ended', () => {
+      wantPlaying = false;
+      savePosition();
+      playAdjacent(1);
+    });
+    on('playing', () => (recoverCount = 0));
+    on('error', () => recover());
+  }
   addEventListener('pagehide', savePosition);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') savePosition();
