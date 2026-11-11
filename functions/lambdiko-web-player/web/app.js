@@ -15,6 +15,12 @@ const LAST_KEY = 'lwp:last';
 const RATE_KEY = 'lwp:rate';
 const ORDER_KEY = 'lwp:order';
 const SAVE_INTERVAL_MS = 5000;
+// 残りがこの秒数を切ったら、次の番組の署名付き URL を先に取得しておく
+const PREFETCH_BEFORE_END_SEC = 60;
+// 先に取得した URL を使う期間（署名付き URL の有効期限より十分短くする）
+const PREFETCH_FRESH_MS = 10 * 60 * 1000;
+// 番組の読み込みに失敗したときに、やり直すまでの待ち時間
+const LOAD_RETRY_DELAYS_MS = [1000, 3000, 10000];
 
 let episodes = [];
 let current = null; // 再生中のエピソード
@@ -23,9 +29,19 @@ let lastSavedAt = 0;
 let recoverCount = 0;
 let wantPlaying = false; // ユーザーが再生中のつもりか（エラーによる停止では false にしない）
 let loadSeq = 0; // load() の世代。新しい番組を選ぶたびに進め、古い読み込みの結果を捨てるのに使う
+let prefetched = null; // 次の番組の署名付き URL { key, url, at }
+let prefetching = false;
 
 // 新しい load() に追い越された古い読み込み。エラーとしては扱わない
 class Superseded extends Error {}
+
+// audio の読み込みの失敗。原因を調べられるよう、ブラウザが出す詳細（error.message）も表示する
+class MediaLoadError extends Error {
+  constructor(mediaError) {
+    const detail = [mediaError?.code, mediaError?.message].filter(Boolean).join(': ');
+    super(`再生できませんでした（MediaError ${detail}${document.hidden ? '、バックグラウンド' : ''}）`);
+  }
+}
 
 // ------------------------------------------------------------
 // API
@@ -140,10 +156,6 @@ async function load(ep, { autoplay }) {
   document.querySelectorAll('.episode').forEach((b) => {
     b.classList.toggle('playing', b.dataset.key === ep.key);
   });
-
-  await setSource(() => fetchEpisodeUrl(ep.key), positions.resumeAt(ep.key));
-  if (autoplay) await audio.play().catch(() => {});
-
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: ep.title,
@@ -151,15 +163,36 @@ async function load(ep, { autoplay }) {
       album: ep.date,
     });
   }
+
+  // 先に取得した URL があれば、通信を待たずにその場で src を差し替えて再生する。
+  // iOS では再生が終わって音が止まるとバックグラウンドの通信が止まるため、
+  // ended の処理中に URL を取りに行くと、次の番組が読み込まれず止まってしまう
+  const seq = loadSeq;
+  const startAt = positions.resumeAt(ep.key);
+  let source = takePrefetchedUrl(ep.key) ?? (() => fetchEpisodeUrl(ep.key));
+  // 読み込みに失敗したら（通信の失敗、URL の期限切れなど）、URL を取り直して何度かやり直す
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await setSource(source, startAt, { autoplay });
+      return;
+    } catch (err) {
+      if (!(err instanceof MediaLoadError) || attempt >= LOAD_RETRY_DELAYS_MS.length) throw err;
+      console.warn(err);
+      await new Promise((r) => setTimeout(r, LOAD_RETRY_DELAYS_MS[attempt]));
+      if (seq !== loadSeq) throw new Superseded();
+      source = () => fetchEpisodeUrl(ep.key);
+    }
+  }
 }
 
-// 署名付き URL を取得して src を差し替え、メタデータ取得後に指定位置へシークする
+// 署名付き URL（または URL を取得する関数）で src を差し替え、メタデータ取得後に指定位置へシークする
+// URL を文字列で渡すと、await を挟まずに src の差し替えと play() まで行う
 // 途中で別の番組が選ばれたら（loadSeq が進んだら）Superseded を投げて何も変更しない
-async function setSource(getUrl, startAt) {
+async function setSource(urlOrGetter, startAt, { autoplay = false } = {}) {
   const seq = loadSeq;
   loading = true;
   try {
-    const url = await getUrl();
+    const url = typeof urlOrGetter === 'string' ? urlOrGetter : await urlOrGetter();
     if (seq !== loadSeq) throw new Superseded();
     await new Promise((resolve, reject) => {
       const cleanup = () => {
@@ -176,11 +209,13 @@ async function setSource(getUrl, startAt) {
       const onError = () => {
         cleanup();
         if (seq !== loadSeq) return reject(new Superseded());
-        reject(new Error(`再生できませんでした（MediaError ${audio.error?.code}）`));
+        reject(new MediaLoadError(audio.error));
       };
       audio.addEventListener('loadedmetadata', onMeta);
       audio.addEventListener('error', onError);
       audio.src = url;
+      // メタデータを待たずに再生を始める（iOS はメタデータを先読みしないことがある）
+      if (autoplay) audio.play().catch(() => {});
     });
   } finally {
     // 追い越された場合、loading は新しい読み込みが管理する
@@ -205,8 +240,7 @@ async function recover() {
   const at = audio.currentTime || positions.resumeAt(ep.key);
   const wasPlaying = wantPlaying;
   try {
-    await setSource(() => fetchEpisodeUrl(ep.key), at);
-    if (wasPlaying) await audio.play().catch(() => {});
+    await setSource(() => fetchEpisodeUrl(ep.key), at, { autoplay: wasPlaying });
   } catch (err) {
     handleError(err);
   }
@@ -220,15 +254,41 @@ function skip(sec) {
 // 一覧の表示順で隣の番組へ移る（offset: 1 で一覧の下、-1 で上）。
 // 再生中の番組が絞り込みで一覧から外れていても（聴き終えて非表示になった場合など）、
 // 全件の並びでの位置から、一覧に表示されている隣の番組を探す。
-function playAdjacent(offset) {
-  if (!current) return;
+function adjacentEpisode(offset) {
+  if (!current) return null;
   const all = sortedEpisodes();
   const shown = new Set(visibleEpisodes().map((e) => e.key));
   for (let i = all.findIndex((e) => e.key === current.key) + offset; i >= 0 && i < all.length; i += offset) {
-    if (shown.has(all[i].key)) {
-      play(all[i]);
-      return;
-    }
+    if (shown.has(all[i].key)) return all[i];
+  }
+  return null;
+}
+
+function playAdjacent(offset) {
+  const ep = adjacentEpisode(offset);
+  if (ep) play(ep);
+}
+
+function takePrefetchedUrl(key) {
+  const p = prefetched;
+  prefetched = null;
+  return p?.key === key && Date.now() - p.at < PREFETCH_FRESH_MS ? p.url : null;
+}
+
+// 再生中（音が出ていてバックグラウンドでも通信できるうち）に、次の番組の URL を取得しておく
+async function prefetchNext() {
+  if (prefetching || !audio.duration || audio.duration - audio.currentTime > PREFETCH_BEFORE_END_SEC) return;
+  const next = adjacentEpisode(1);
+  if (!next) return;
+  if (prefetched?.key === next.key && Date.now() - prefetched.at < PREFETCH_FRESH_MS) return;
+  prefetching = true;
+  try {
+    prefetched = { key: next.key, url: await fetchEpisodeUrl(next.key), at: Date.now() };
+  } catch (err) {
+    // 失敗しても ended 時に取り直すので、ここでは記録だけする
+    console.error(err);
+  } finally {
+    prefetching = false;
   }
 }
 
@@ -274,7 +334,9 @@ function bindEvents() {
   });
 
   audio.addEventListener('timeupdate', () => {
-    if (!audio.paused && Date.now() - lastSavedAt > SAVE_INTERVAL_MS) savePosition();
+    if (audio.paused || loading) return;
+    if (Date.now() - lastSavedAt > SAVE_INTERVAL_MS) savePosition();
+    prefetchNext();
   });
   audio.addEventListener('play', () => (wantPlaying = true));
   audio.addEventListener('pause', () => {
@@ -291,6 +353,8 @@ function bindEvents() {
   addEventListener('pagehide', savePosition);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') savePosition();
+    // バックグラウンドで読み込みに失敗したまま止まっていたら、画面に戻ったときにやり直す
+    else if (current && audio.error && wantPlaying && !loading) play(current);
   });
 
   if ('mediaSession' in navigator) {
