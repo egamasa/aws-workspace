@@ -13,6 +13,7 @@ const auth = createAuth({
 
 const LAST_KEY = 'lwp:last';
 const RATE_KEY = 'lwp:rate';
+const ORDER_KEY = 'lwp:order';
 const SAVE_INTERVAL_MS = 5000;
 
 let episodes = [];
@@ -63,11 +64,14 @@ function formatTime(sec) {
   return `${h}:${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// 検索・聴了の非表示を反映した、画面に表示する一覧
+// 並び順を反映した全件（API は放送日時の新しい順で返す）
+const sortedEpisodes = () => ($('order').value === 'asc' ? [...episodes].reverse() : episodes);
+
+// 並び順・検索・聴了の非表示を反映した、画面に表示する一覧
 function visibleEpisodes() {
   const q = $('search').value.trim().toLowerCase();
   const hideDone = $('hide-done').checked;
-  return episodes.filter(
+  return sortedEpisodes().filter(
     (ep) =>
       (!q || `${ep.title} ${ep.station} ${ep.key}`.toLowerCase().includes(q)) &&
       !(hideDone && positions.isDone(ep.key)),
@@ -205,7 +209,7 @@ function playAdjacent(offset) {
   let list = visibleEpisodes();
   let i = list.findIndex((e) => e.key === current.key);
   if (i === -1) {
-    list = episodes;
+    list = sortedEpisodes();
     i = list.findIndex((e) => e.key === current.key);
   }
   const ep = i === -1 ? undefined : list[i + offset];
@@ -237,6 +241,11 @@ function bindEvents() {
   $('logout').addEventListener('click', () => auth.logout());
   $('search').addEventListener('input', render);
   $('hide-done').addEventListener('change', render);
+  $('order').value = localStorage.getItem(ORDER_KEY) === 'asc' ? 'asc' : 'desc';
+  $('order').addEventListener('change', () => {
+    localStorage.setItem(ORDER_KEY, $('order').value);
+    render();
+  });
   $('reload').addEventListener('click', () => loadEpisodes().catch(handleError));
   $('back').addEventListener('click', () => skip(-15));
   $('fwd').addEventListener('click', () => skip(30));

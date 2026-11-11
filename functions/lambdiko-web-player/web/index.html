@@ -24,6 +24,10 @@
     <main id="main-view" hidden>
       <div class="toolbar">
         <input id="search" type="search" placeholder="タイトル・局で絞り込み" autocomplete="off" />
+        <select id="order" aria-label="並び順">
+          <option value="desc">新しい順</option>
+          <option value="asc">古い順</option>
+        </select>
         <label><input id="hide-done" type="checkbox" /> 聴き終えたものを隠す</label>
         <button id="reload" type="button" title="一覧を再読み込み">↻</button>
       </div>
