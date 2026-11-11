@@ -6,13 +6,14 @@ AWS 環境で使用する自動化スクリプトやサーバーレス用ソー�
 
 ### `functions/` Serverless apps
 
-| プロジェクト                                          | 概要                                |
-| ----------------------------------------------------- | ----------------------------------- |
-| [aws-cost](./functions/aws-cost/)                     | AWS 当月利用料金を Discord へ通知   |
-| [discord-notify](./functions/discord-notify/)         | SNS → Discord Webhook 通知          |
-| [Lambdiko（らむじこ）](./functions/lambdiko/)         | IPサイマルラジオ ダウンロードツール |
-| [nhk-program-notify](./functions/nhk-program-notify/) | NHK 番組情報を Discord へ通知       |
-| [podcast-download](./functions/podcast-download/)     | ポッドキャストを S3 へ保存          |
+| プロジェクト                                            | 概要                                   |
+| ------------------------------------------------------- | -------------------------------------- |
+| [aws-cost](./functions/aws-cost/)                       | AWS 当月利用料金を Discord へ通知      |
+| [discord-notify](./functions/discord-notify/)           | SNS → Discord Webhook 通知             |
+| [Lambdiko（らむじこ）](./functions/lambdiko/)           | IPサイマルラジオ ダウンロードツール    |
+| [lambdiko-web-player](./functions/lambdiko-web-player/) | Lambdiko 録音ファイル用 Web プレイヤー |
+| [nhk-program-notify](./functions/nhk-program-notify/)   | NHK 番組情報を Discord へ通知          |
+| [podcast-download](./functions/podcast-download/)       | ポッドキャストを S3 へ保存             |
 
 ### Serverless apps (Legacy)
 
