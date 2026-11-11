@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="color-scheme" content="light dark" />
-    <title>Lambdiko Player</title>
+    <title>Lambdiko Web Player</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="style.css" />
     <script type="module" src="app.js"></script>
   </head>
   <body>
     <header>
-      <h1>Lambdiko Player</h1>
+      <h1>Lambdiko Web Player</h1>
       <button id="logout" type="button" hidden>ログアウト</button>
     </header>
 
@@ -23,13 +23,13 @@
 
     <main id="main-view" hidden>
       <div class="toolbar">
+        <button id="reload" type="button" title="一覧を再読み込み">↻</button>
         <input id="search" type="search" placeholder="タイトル・局で絞り込み" autocomplete="off" />
         <select id="order" aria-label="並び順">
           <option value="desc">新しい順</option>
           <option value="asc">古い順</option>
         </select>
         <label><input id="hide-done" type="checkbox" /> 聴き終えたものを隠す</label>
-        <button id="reload" type="button" title="一覧を再読み込み">↻</button>
       </div>
       <p id="status" role="status"></p>
       <ul id="episodes"></ul>
