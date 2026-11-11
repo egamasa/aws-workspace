@@ -1,0 +1,180 @@
+:root {
+  --bg: #fafafa;
+  --fg: #1d1d1f;
+  --muted: #6e6e73;
+  --card: #fff;
+  --line: #e0e0e0;
+  --accent: #0a84ff;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Hiragino Sans',
+    'Noto Sans JP',
+    sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111;
+    --fg: #f2f2f2;
+    --muted: #9a9aa0;
+    --card: #1c1c1e;
+    --line: #333;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  padding-bottom: 11rem;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button,
+select {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+h1 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+#login-view {
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.8rem 1rem;
+}
+
+#search {
+  flex: 1 1 14rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+}
+
+#status {
+  margin: 0 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+#episodes {
+  list-style: none;
+  margin: 0;
+  padding: 0 1rem;
+}
+
+#episodes li {
+  margin: 0.4rem 0;
+}
+
+.episode {
+  display: grid;
+  width: 100%;
+  gap: 0.2rem;
+  text-align: left;
+  padding: 0.6rem 0.8rem;
+}
+
+.episode.playing {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.episode.done .title {
+  color: var(--muted);
+}
+
+.episode .meta,
+#now-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.episode progress {
+  width: 100%;
+  height: 3px;
+  appearance: none;
+  border: 0;
+  background: var(--line);
+}
+
+.episode progress::-webkit-progress-bar {
+  background: var(--line);
+}
+
+.episode progress::-webkit-progress-value {
+  background: var(--accent);
+}
+
+.episode progress::-moz-progress-bar {
+  background: var(--accent);
+}
+
+#player {
+  position: fixed;
+  inset: auto 0 0 0;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.6rem 1rem calc(0.6rem + env(safe-area-inset-bottom));
+  background: var(--card);
+  border-top: 1px solid var(--line);
+}
+
+.now {
+  display: grid;
+  overflow: hidden;
+}
+
+#now-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+#audio {
+  width: 100%;
+}
+
+.controls {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
