@@ -128,7 +128,6 @@ async function load(ep, { autoplay }) {
   $('now-meta').textContent = [ep.station, ep.date && `${ep.date} ${ep.time}`]
     .filter(Boolean)
     .join('　');
-  document.title = `${ep.title} - Lambdiko Player`;
   document.querySelectorAll('.episode').forEach((b) => {
     b.classList.toggle('playing', b.dataset.key === ep.key);
   });
