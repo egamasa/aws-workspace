@@ -63,16 +63,21 @@ function formatTime(sec) {
   return `${h}:${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function render() {
+// 検索・聴了の非表示を反映した、画面に表示する一覧
+function visibleEpisodes() {
   const q = $('search').value.trim().toLowerCase();
   const hideDone = $('hide-done').checked;
-  const tpl = $('episode-tpl');
-  const list = $('episodes');
-  const shown = episodes.filter(
+  return episodes.filter(
     (ep) =>
       (!q || `${ep.title} ${ep.station} ${ep.key}`.toLowerCase().includes(q)) &&
       !(hideDone && positions.isDone(ep.key)),
   );
+}
+
+function render() {
+  const tpl = $('episode-tpl');
+  const list = $('episodes');
+  const shown = visibleEpisodes();
 
   list.replaceChildren(
     ...shown.map((ep) => {
@@ -194,6 +199,20 @@ function skip(sec) {
   audio.currentTime = Math.min(Math.max(audio.currentTime + sec, 0), audio.duration);
 }
 
+// 一覧の表示順で隣の番組へ移る（offset: 1 で一覧の下、-1 で上）。
+// 再生中の番組が絞り込みで一覧から外れている場合は、全件の並びで探す。
+function playAdjacent(offset) {
+  if (!current) return;
+  let list = visibleEpisodes();
+  let i = list.findIndex((e) => e.key === current.key);
+  if (i === -1) {
+    list = episodes;
+    i = list.findIndex((e) => e.key === current.key);
+  }
+  const ep = i === -1 ? undefined : list[i + offset];
+  if (ep) play(ep);
+}
+
 // ------------------------------------------------------------
 // 画面
 // ------------------------------------------------------------
@@ -251,6 +270,8 @@ function bindEvents() {
   if ('mediaSession' in navigator) {
     navigator.mediaSession.setActionHandler('seekbackward', () => skip(-15));
     navigator.mediaSession.setActionHandler('seekforward', () => skip(30));
+    navigator.mediaSession.setActionHandler('previoustrack', () => playAdjacent(-1));
+    navigator.mediaSession.setActionHandler('nexttrack', () => playAdjacent(1));
   }
 }
 
