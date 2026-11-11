@@ -203,17 +203,18 @@ function skip(sec) {
 }
 
 // 一覧の表示順で隣の番組へ移る（offset: 1 で一覧の下、-1 で上）。
-// 再生中の番組が絞り込みで一覧から外れている場合は、全件の並びで探す。
+// 再生中の番組が絞り込みで一覧から外れていても（聴き終えて非表示になった場合など）、
+// 全件の並びでの位置から、一覧に表示されている隣の番組を探す。
 function playAdjacent(offset) {
   if (!current) return;
-  let list = visibleEpisodes();
-  let i = list.findIndex((e) => e.key === current.key);
-  if (i === -1) {
-    list = sortedEpisodes();
-    i = list.findIndex((e) => e.key === current.key);
+  const all = sortedEpisodes();
+  const shown = new Set(visibleEpisodes().map((e) => e.key));
+  for (let i = all.findIndex((e) => e.key === current.key) + offset; i >= 0 && i < all.length; i += offset) {
+    if (shown.has(all[i].key)) {
+      play(all[i]);
+      return;
+    }
   }
-  const ep = i === -1 ? undefined : list[i + offset];
-  if (ep) play(ep);
 }
 
 // ------------------------------------------------------------
@@ -267,6 +268,7 @@ function bindEvents() {
   audio.addEventListener('ended', () => {
     wantPlaying = false;
     savePosition();
+    playAdjacent(1);
   });
   audio.addEventListener('playing', () => (recoverCount = 0));
   audio.addEventListener('error', () => recover());
