@@ -22,6 +22,10 @@ let loading = false; // src 差し替え中は位置を保存しない
 let lastSavedAt = 0;
 let recoverCount = 0;
 let wantPlaying = false; // ユーザーが再生中のつもりか（エラーによる停止では false にしない）
+let loadSeq = 0; // load() の世代。新しい番組を選ぶたびに進め、古い読み込みの結果を捨てるのに使う
+
+// 新しい load() に追い越された古い読み込み。エラーとしては扱わない
+class Superseded extends Error {}
 
 // ------------------------------------------------------------
 // API
@@ -120,6 +124,7 @@ async function loadEpisodes() {
 // 再生
 // ------------------------------------------------------------
 async function load(ep, { autoplay }) {
+  loadSeq++;
   audio.pause();
   wantPlaying = false;
   savePosition();
@@ -149,27 +154,37 @@ async function load(ep, { autoplay }) {
 }
 
 // 署名付き URL を取得して src を差し替え、メタデータ取得後に指定位置へシークする
+// 途中で別の番組が選ばれたら（loadSeq が進んだら）Superseded を投げて何も変更しない
 async function setSource(getUrl, startAt) {
+  const seq = loadSeq;
   loading = true;
   try {
     const url = await getUrl();
+    if (seq !== loadSeq) throw new Superseded();
     await new Promise((resolve, reject) => {
-      const onMeta = () => {
+      const cleanup = () => {
+        audio.removeEventListener('loadedmetadata', onMeta);
         audio.removeEventListener('error', onError);
+      };
+      const onMeta = () => {
+        cleanup();
+        if (seq !== loadSeq) return reject(new Superseded());
         if (startAt > 0) audio.currentTime = startAt;
         audio.playbackRate = Number($('rate').value);
         resolve();
       };
       const onError = () => {
-        audio.removeEventListener('loadedmetadata', onMeta);
+        cleanup();
+        if (seq !== loadSeq) return reject(new Superseded());
         reject(new Error(`再生できませんでした（MediaError ${audio.error?.code}）`));
       };
-      audio.addEventListener('loadedmetadata', onMeta, { once: true });
-      audio.addEventListener('error', onError, { once: true });
+      audio.addEventListener('loadedmetadata', onMeta);
+      audio.addEventListener('error', onError);
       audio.src = url;
     });
   } finally {
-    loading = false;
+    // 追い越された場合、loading は新しい読み込みが管理する
+    if (seq === loadSeq) loading = false;
   }
 }
 
@@ -229,6 +244,7 @@ function showLogin(message) {
 }
 
 function handleError(err) {
+  if (err instanceof Superseded) return;
   if (err instanceof AuthRequired) {
     showLogin('セッションの有効期限が切れました。もう一度ログインしてください。');
     return;
@@ -295,7 +311,16 @@ async function main() {
     return;
   }
 
-  if (!(await auth.getAccessToken())) {
+  let token;
+  try {
+    token = await auth.getAccessToken();
+  } catch (err) {
+    // トークンの更新が通信エラーなどで失敗した場合。セッションは残っているので再ログインはさせない
+    console.error(err);
+    showLogin('通信できませんでした。電波の良い場所でページを開き直してください。');
+    return;
+  }
+  if (!token) {
     // 未ログインならそのままログイン画面へ
     await auth.login();
     return;

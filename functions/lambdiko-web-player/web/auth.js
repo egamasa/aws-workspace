@@ -4,6 +4,14 @@
 const TOKENS_KEY = 'lwp:tokens';
 const PKCE_KEY = 'lwp:pkce';
 
+// トークンエンドポイントが返したエラー（HTTP ステータスを持つ）
+class TokenEndpointError extends Error {
+  constructor(status) {
+    super(`token endpoint: ${status}`);
+    this.status = status;
+  }
+}
+
 export function createAuth({ cognitoDomain, clientId, redirectUri }) {
   let refreshing = null;
 
@@ -17,7 +25,7 @@ export function createAuth({ cognitoDomain, clientId, redirectUri }) {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ client_id: clientId, ...params }),
     });
-    if (!res.ok) throw new Error(`token endpoint: ${res.status}`);
+    if (!res.ok) throw new TokenEndpointError(res.status);
     const body = await res.json();
     return {
       accessToken: body.access_token,
@@ -71,6 +79,8 @@ export function createAuth({ cognitoDomain, clientId, redirectUri }) {
     );
   }
 
+  // リフレッシュトークンが無効と判明した場合（400/401）だけ null を返してセッションを破棄する。
+  // 通信エラーや 5xx は一時的なものとして例外を投げ、トークンは残す。
   async function refresh() {
     const t = load();
     if (!t?.refreshToken) return null;
@@ -81,19 +91,29 @@ export function createAuth({ cognitoDomain, clientId, redirectUri }) {
       });
       save(next);
       return next;
-    } catch {
-      clear();
-      return null;
+    } catch (err) {
+      if (err instanceof TokenEndpointError && (err.status === 400 || err.status === 401)) {
+        clear();
+        return null;
+      }
+      throw err;
     }
   }
 
-  // 有効なアクセストークンを返す。期限が近ければ更新し、更新できなければ null
+  // 有効なアクセストークンを返す。期限が近ければ更新する。
+  // ログインしていない・セッションが失効した場合は null。
+  // 更新が一時的に失敗した場合は、現在のトークンがまだ有効ならそれを返し、無効なら例外を投げる。
   async function getAccessToken({ forceRefresh = false } = {}) {
     const t = load();
     if (!t) return null;
     if (!forceRefresh && t.expiresAt - Date.now() > 60_000) return t.accessToken;
     refreshing ??= refresh().finally(() => (refreshing = null));
-    return (await refreshing)?.accessToken ?? null;
+    try {
+      return (await refreshing)?.accessToken ?? null;
+    } catch (err) {
+      if (!forceRefresh && t.expiresAt > Date.now()) return t.accessToken;
+      throw err;
+    }
   }
 
   async function logout() {
